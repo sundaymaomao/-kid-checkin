@@ -10,6 +10,8 @@
 <meta name="theme-color" content="#5AC8FA">
 <meta name="format-detection" content="telephone=no">
 <title>星星打卡 · 奖励商城</title>
+<!-- Supabase JS（UMD 版，创建全局 window.supabase）；加载失败时应用自动降级为纯本地 localStorage 模式 -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
 :root{
   --sky:#5AC8FA; --sky-deep:#2998E8; --red:#FF5B5B; --star:#FFC933;
@@ -366,10 +368,18 @@ button{cursor:pointer;border:0;background:none}
 <script>
 "use strict";
 /* ============================ 数据层 ============================ */
+/* ============================ Supabase 云端配置 ============================ */
+const SUPABASE_URL = "https://puyxgwnbmwbmsieroxnj.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_BWK7Cj8BQcCepw_F_A5fxw_RcqapHUu";
+const SUPABASE_PUBLISHABLE_KEY="sb_publishable_BWK7Cj8BQcCepw_F_A5fxw_RcqapHUu";
+const USER_ID='junjun01';
+const SB=(window.supabase&&window.supabase.createClient)?window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY):null;
+
 const DB_KEY='star_reward_db_v1';
 const LEVEL_STEPS=[0,20,60,120,200];
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+/* UUID v4：云端四张表主键均为 uuid，本地也统一用 uuid 作为 id */
+const uid=()=>(crypto.randomUUID?crypto.randomUUID():'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0,v=c==='x'?r:(r&0x3|0x8);return v.toString(16)}));
 const iso=()=>new Date().toISOString();
 function localDate(d=new Date()){const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`}
 const weekCN=['日','一','二','三','四','五','六'];
@@ -407,29 +417,167 @@ function defaultDB(){
     settings:{sfxOn:true,levelSteps:LEVEL_STEPS.slice()}
   };
 }
+/* ---------- 四表字段映射（本地 db ⇄ Supabase） ----------
+   frequency.days 编码到 sort：低 7 位为星期掩码（bit0=周日…bit6=周六）。
+   freq_type 统一用 daily / weekday / once；本地 weekly 视为 weekday。
+   records.confirmed：true=approved，false=pending；rejected 通过 points<0 表达。
+   coupons：status pending/done；done=通过，rejected 用 'rejected'（text 可存）。
+--------------------------------------------------------- */
+const SBFREQ={daily:'daily',weekly:'weekday',weekday:'weekday',once:'once'};
+const SBSTATUS={'approved':'done','pending':'pending','rejected':'rejected'};
+function daysToMask(days){return (days||[]).reduce((m,d)=>m|(1<<(+d)),0)}
+function maskToDays(sort){const m=sort||0;const a=[];for(let i=0;i<7;i++)if(m&(1<<i))a.push(i);return a}
+const taskToRow=t=>({id:t.id,user_id:USER_ID,name:t.name,points:+t.stars||0,
+  freq_type:SBFREQ[(t.frequency&&t.frequency.type)]||'daily',
+  need_confirm:!!t.needConfirm,sort:daysToMask(t.frequency&&t.frequency.days),
+  created_at:t.createdAt||iso(),updated_at:iso()});
+const rowToTask=r=>({id:r.id,name:r.name,icon:'star',emoji:'',stars:+r.points||0,
+  frequency:{type:r.freq_type==='weekday'?'weekly':r.freq_type||'daily',
+    days:r.freq_type==='weekday'?maskToDays(r.sort):[]},
+  needConfirm:!!r.need_confirm,active:true,createdAt:r.created_at||iso()});
+
+const rewardToRow=p=>({id:p.id,user_id:USER_ID,name:p.name,image_url:p.image||null,
+  cost:+p.cost||0,stock:Number.isFinite(+p.stock)?+p.stock:999,
+  sort:daysToMask([]),created_at:p.createdAt||iso(),updated_at:iso()});
+const rowToReward=r=>({id:r.id,name:r.name,image:r.image_url||'',icon:'dorayaki',emoji:'',
+  cost:+r.cost||0,stock:Number.isFinite(+r.stock)?+r.stock:999,
+  active:true,createdAt:r.created_at||iso()});
+
+/* points<0 表示驳回（界面仍需显示星星数为正），confirmed=false 表示待确认 */
+const checkinToRow=c=>({id:c.id,user_id:USER_ID,task_id:c.taskId,day:c.date,
+  points:(c.status==='rejected'?-1:1)*(+c.stars||0),confirmed:c.status==='approved',
+  created_at:c.createdAt||iso(),updated_at:c.reviewedAt||iso()});
+const rowToCheckin=(r,taskMap)=>({id:r.id,taskId:r.task_id,date:r.day,stars:Math.abs(+r.points||0),
+  status:(+r.points<0)?'rejected':(r.confirmed?'approved':'pending'),
+  createdAt:r.created_at||iso(),reviewedAt:r.updated_at||iso(),_name:taskMap[r.task_id]||''});
+
+/* coupons 表无 cost 列：落库时 cost 由关联 reward 回查；拉取时用商品表回查补全 */
+const couponToRow=o=>({id:o.id,user_id:USER_ID,reward_id:o.productId,
+  status:SBSTATUS[o.status]||'pending',created_at:o.createdAt||iso(),updated_at:o.reviewedAt||iso()});
+const rowToCoupon=(r,rewardMap)=>{const p=rewardMap[r.reward_id]||{};return {id:r.id,
+  productId:r.reward_id,productName:p.name||'已下架奖品',productImage:p.image||'',
+  productIcon:p.icon||'dorayaki',cost:(p.cost!=null?+p.cost:0),
+  status:r.status==='done'?'approved':(r.status==='rejected'?'rejected':'pending'),
+  createdAt:r.created_at||iso(),reviewedAt:r.updated_at||iso()}};
+
+/* ---------- 本地离线快照（localStorage 备份 + 离线兜底） ---------- */
 function loadDB(){
   try{const raw=localStorage.getItem(DB_KEY);if(raw){const d=JSON.parse(raw);if(d&&d.child&&Array.isArray(d.tasks)){
     d.settings=d.settings||{sfxOn:true,levelSteps:LEVEL_STEPS.slice()};
     d.checkins=d.checkins||[];d.transactions=d.transactions||[];d.products=d.products||[];d.orders=d.orders||[];
     return d;}}}catch(e){console.warn(e)}
-  const d=defaultDB();saveDB(d);return d;
+  // 首次建库：直接写本地缓存，不能调用 saveDB()（此时全局 db 尚未初始化完成，且无需推送云端）
+  const d=defaultDB();
+  try{localStorage.setItem(DB_KEY,JSON.stringify(d))}catch(e){}
+  return d;
 }
 let db=loadDB();
-/* ---------- 图片 / 图标检测 ----------
-   规则：只校验打卡卡片上的图标；全屏背景图 background-landscape.jpg
-   与 background-portrait.jpg 由 CSS 直接加载、不写入本地存储，
-   跳过任何存储大小检测，且不再弹出「存储空间不足，请换用小图片」提示。 */
+
+/* ---------- 图片 / 图标检测 ---------- */
 const SKIP_SIZE_CHECK=['background-landscape.jpg','background-portrait.jpg'];
 function checkImageAsset(src){
-  if(SKIP_SIZE_CHECK.some(f=>String(src||'').indexOf(f)>-1))return true; // 背景图：跳过检测
-  return typeof src==='string'&&src.length<2000; // 打卡卡片图标：内联 SVG ID / 短 dataURL，仅校验可用性
+  if(SKIP_SIZE_CHECK.some(f=>String(src||'').indexOf(f)>-1))return true;
+  return typeof src==='string'&&src.length<2000;
 }
+
+/* ============ Supabase 同步引擎 ============
+   原则：上层只操作 db 内存对象 + 调用 saveDB()；本层负责 diff 推送与拉取重建。
+   任何网络异常都静默降级，本地功能完全可用（离线兜底）。              */
+let sbReady=false,syncing=false,pushTimer=null,remoteSync=false;
+const tables=['tasks','rewards','records','coupons'];
+
+/* 由 db 生成四表行数据 */
+function rowsFromDB(){
+  const taskMap={},rewardMap={};
+  db.tasks.forEach(t=>taskMap[t.id]=t.name);
+  db.products.forEach(p=>rewardMap[p.id]=p);
+  // 云端 records.task_id / coupons.reward_id 有外键约束：
+  // 已删除任务/商品的历史记录不再推送，避免整批 upsert 因外键失败（本地缓存仍完整保留）
+  const validRecords=db.checkins.filter(c=>taskMap[c.taskId]);
+  const validCoupons=db.orders.filter(o=>rewardMap[o.productId]);
+  return {
+    tasks:db.tasks.map(taskToRow),
+    rewards:db.products.map(rewardToRow),
+    records:validRecords.map(checkinToRow),
+    coupons:validCoupons.map(couponToRow),
+    _taskMap:taskMap,_rewardMap:rewardMap
+  };
+}
+
+/* 推送：只同步四张业务表；child/settings/流水继续留本地（表结构未提供） */
+async function pushToCloud(){
+  if(!SB||syncing||remoteSync)return;
+  syncing=true;
+  try{
+    const {tasks,rewards,records,coupons}=rowsFromDB();
+    const groups={tasks,rewards,records,coupons};
+    for(const tbl of tables){
+      const rows=groups[tbl];
+      const ids=rows.map(r=>r.id);
+      // 全表 by user_id 删除不在本地集合中的行（保持与本地一致）
+      const {error:delErr}=await SB.from(tbl).delete().eq('user_id',USER_ID).not('id','in',`(${ids.length?ids.join(','):'00000000-0000-0000-0000-000000000000'})`);
+      if(delErr)console.warn('[SB] delete',tbl,delErr.message);
+      if(rows.length){
+        const {error:upErr}=await SB.from(tbl).upsert(rows,{onConflict:'id'});
+        if(upErr)console.warn('[SB] upsert',tbl,upErr.message);
+      }
+    }
+    sbReady=true;
+  }catch(e){console.warn('[SB] push failed (offline fallback)',e&&e.message||e)}
+  finally{syncing=false}
+}
+
+/* 拉取：用云端四表重建业务数据，child/settings/流水从本地保留 */
+async function pullFromCloud(notify){
+  if(!SB||syncing)return;
+  syncing=true;remoteSync=true;
+  try{
+    const res={};
+    for(const tbl of tables){
+      const {data,error}=await SB.from(tbl).select('*').eq('user_id',USER_ID);
+      if(error)throw new Error(tbl+': '+error.message);
+      res[tbl]=data||[];
+    }
+    // 如果云端四表全空，说明是首次使用：把本地默认数据初始化到云端
+    const allEmpty=tables.every(t=>res[t].length===0);
+    if(allEmpty){remoteSync=false;syncing=false;await pushToCloud();if(notify)notify('云端已初始化');return}
+    const taskMap={};res.tasks.forEach(t=>taskMap[t.id]=t.name);
+    const rewardMap={};res.rewards.forEach(p=>rewardMap[p.id]=p);
+    const oldChild=db.child,oldSettings=db.settings,localAdjust=(db.transactions||[]).filter(t=>t.type==='adjust');
+    db.tasks=res.tasks.map(rowToTask);
+    db.products=res.rewards.map(rowToReward);
+    db.checkins=res.records.map(r=>rowToCheckin(r,taskMap));
+    db.orders=res.coupons.map(r=>rowToCoupon(r,rewardMap));
+    db.child=oldChild;db.settings=oldSettings;
+    db.transactions=localAdjust;
+    localStorage.setItem(DB_KEY,JSON.stringify(db));
+    sbReady=true;
+    if(notify)notify('已同步云端数据');
+  }catch(e){console.warn('[SB] pull failed (offline fallback)',e&&e.message||e)}
+  finally{syncing=false;remoteSync=false;renderAll()}
+}
+
+/* Realtime：四表变化触发重新拉取，多设备自动同步 */
+function subscribeRealtime(){
+  if(!SB)return;
+  try{
+    const ch=SB.channel('star-reward-'+USER_ID);
+    tables.forEach(tbl=>ch.on('postgres_changes',{event:'*',schema:'public',table:tbl},()=>{
+      if(syncing||remoteSync)return;
+      clearTimeout(pushTimer);
+      pushTimer=setTimeout(()=>pullFromCloud(false),400);
+    }));
+    ch.subscribe();
+  }catch(e){console.warn('[SB] realtime subscribe failed',e&&e.message||e)}
+}
+
+/* saveDB：本地缓存立即写（离线兜底），云端防抖增量推送 */
 function saveDB(){
   try{
-    // 仅对打卡卡片图标做检测；两张全屏背景图不参与存储大小检测
     if((db.tasks||[]).some(t=>t.icon&&!checkImageAsset(t.icon)))console.warn('存在异常的打卡卡片图标，已忽略');
     localStorage.setItem(DB_KEY,JSON.stringify(db));
-  }catch(e){console.warn('本地存储写入失败（背景图与卡片图标均已跳过大小检测）',e)}
+  }catch(e){console.warn('本地存储写入失败',e)}
+  if(SB){clearTimeout(pushTimer);pushTimer=setTimeout(pushToCloud,350)}
 }
 function addTx(type,amount,reason,refId){
   db.child.starBalance+=amount;
@@ -700,7 +848,26 @@ function openProductModal(id){
     <div id="picPreview" style="margin-top:8px">${p&&p.image?`<img src="${esc(p.image)}" style="max-height:100px;border-radius:12px">`:''}</div>
     <div class="modal-actions"><button type="button" class="small-btn btn-gray" data-act="close-modal">取消</button><button type="submit" class="small-btn btn-blue">保存商品</button></div>
   </form>`);
-  document.getElementById('picInput').onchange=e=>{const f=e.target.files[0];if(!f)return;compressImage(f,d=>{document.getElementById('imageData').value=d;document.getElementById('picPreview').innerHTML=`<img src="${d}" style="max-height:100px;border-radius:12px">`})};
+  document.getElementById('picInput').onchange=e=>{
+    const f=e.target.files[0];if(!f)return;
+    compressImage(f,async d=>{
+      const prev=document.getElementById('picPreview');
+      prev.innerHTML=`<img src="${d}" style="max-height:100px;border-radius:12px">`;
+      let finalUrl=d; // 默认用压缩后的 dataURL（离线兜底）
+      if(SB){
+        try{
+          const bin=await (await fetch(d)).blob();
+          const path=USER_ID+'/reward-'+Date.now()+'-'+Math.random().toString(36).slice(2,8)+'.jpg';
+          const {error:upErr}=await SB.storage.from('reward-images').upload(path,bin,{contentType:'image/jpeg',upsert:false});
+          if(upErr)throw upErr;
+          const {data:pub}=SB.storage.from('reward-images').getPublicUrl(path);
+          if(pub&&pub.publicUrl)finalUrl=pub.publicUrl; // 上传成功：存云端 URL 到 image_url
+        }catch(err){console.warn('[SB] image upload failed, fallback base64',err&&err.message||err)}
+      }
+      document.getElementById('imageData').value=finalUrl;
+      prev.innerHTML=`<img src="${finalUrl}" style="max-height:100px;border-radius:12px">`;
+    });
+  };
   document.getElementById('productForm').onsubmit=e=>{
     e.preventDefault();const fd=new FormData(e.target);
     const ic=e.target.querySelector('.iconValue').value||'dorayaki';
@@ -776,7 +943,13 @@ document.getElementById('importFile').onchange=e=>{
   r.readAsText(f);
 };
 /* ============================ 启动 ============================ */
-renderAll();
+renderAll(); // 先用本地缓存秒开渲染，保证离线可用
+if(SB){
+  // 异步拉取云端最新数据并订阅实时同步（失败自动降级为本地模式）
+  setTimeout(()=>{pullFromCloud(false);subscribeRealtime()},0);
+  // 网络恢复时自动重新同步
+  window.addEventListener('online',()=>pullFromCloud(false));
+}
 </script>
 </body>
 </html>
