@@ -1,106 +1,954 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>星星打卡</title>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <style>
-    * {margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
-    body{background:#e6f2ff;background-image:url('bg.png');background-size:cover;background-position:center;min-height:100vh}
-    .container{display:flex;min-height:100vh}
-    .sidebar{width:180px;background:rgba(255,255,255,0.75);padding:20px;display:flex;flex-direction:column;gap:16px}
-    .user-card{background:#3498ff;border-radius:16px;padding:16px;color:white;text-align:center}
-    .star-big{font-size:42px}
-    .menu-item{padding:12px;border-radius:12px;background:rgba(255,255,255,0.6);cursor:pointer}
-    .menu-item.active{background:#3498ff;color:white}
-    .main{flex:1;padding:24px;overflow:auto}
-    .progress-bar-wrap{background:#fff;border-radius:14px;padding:14px;margin-bottom:20px}
-    .progress-top{display:flex;justify-content:space-between;margin-bottom:8px}
-    .progress-bg{width:100%;height:14px;background:#e4e4e4;border-radius:999px;overflow:hidden}
-    .progress-fill{height:100%;background:#42c970}
-    .task-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px}
-    .task-card{background:rgba(255,255,255,0.75);border-radius:16px;padding:18px;position:relative;cursor:pointer}
-    .task-done-mark{position:absolute;top:10px;left:10px;width:24px;height:24px;background:#42c970;border-radius:50%;color:white;display:grid;place-items:center;font-weight:bold}
-    .task-star-tag{position:absolute;top:10px;right:10px;background:#ffb32c;color:white;padding:3px 8px;border-radius:999px;font-size:14px}
-    .task-icon{font-size:40px;margin:8px 0}
-    @media(max-width:768px){
-      .container{flex-direction:column}
-      .sidebar{width:100%;flex-direction:row;overflow-x:auto}
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="星星打卡">
+<meta name="theme-color" content="#5AC8FA">
+<meta name="format-detection" content="telephone=no">
+<title>星星打卡 · 奖励商城</title>
+<!-- Supabase JS（UMD 版，创建全局 window.supabase）；加载失败时应用自动降级为纯本地 localStorage 模式 -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+:root{
+  --sky:#5AC8FA; --sky-deep:#2998E8; --red:#FF5B5B; --star:#FFC933;
+  --cream:#FFFDF7; --ink:#274A78; --muted:#7C93B0; --green:#38C78A;
+  --line:#E3EEFA; --shadow:0 8px 24px rgba(41,152,232,.16);
+  --radius:24px; --tab-h:76px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;min-height:100%;overscroll-behavior-y:none}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Arial,sans-serif;
+  color:var(--ink);background:#DFF3FF;
+  -webkit-font-smoothing:antialiased;touch-action:manipulation;
+}
+/* ---------- 哆啦A梦背景层：背景图 → 白色蒙版 → 卡片内容 ---------- */
+#bgLayer{position:fixed;inset:0;z-index:0;pointer-events:none;background-repeat:no-repeat;background-position:center;background-size:cover;
+  background-image:linear-gradient(180deg,#9FE0FF 0%,#DFF3FF 46%,#F3FBFF 100%)}
+#bgLayer::after{content:"";position:absolute;inset:0;background:rgba(255,255,255,.65);pointer-events:none}
+@media(max-width:768px){#bgLayer{background-image:url('background-portrait.jpg'),linear-gradient(180deg,#9FE0FF 0%,#DFF3FF 46%,#F3FBFF 100%)}}
+@media(min-width:769px){#bgLayer{background-image:url('background-landscape.jpg'),linear-gradient(180deg,#9FE0FF 0%,#DFF3FF 46%,#F3FBFF 100%)}}
+button,input,select,textarea{font-family:inherit;font-size:16px;color:inherit}
+button{cursor:pointer;border:0;background:none}
+.hidden{display:none!important}
+
+/* ---------- layout ---------- */
+#app{display:flex;min-height:100vh;min-height:100dvh;position:relative;z-index:1}
+.sidebar{width:212px;flex:none;background:rgba(255,255,255,.86);backdrop-filter:blur(12px);
+  -webkit-backdrop-filter:blur(12px);border-right:2px solid #fff;display:flex;flex-direction:column;
+  padding:18px 14px;gap:10px;box-shadow:4px 0 20px rgba(41,152,232,.08)}
+.brand{display:flex;align-items:center;gap:9px;padding:4px 6px 14px;font-weight:900;color:var(--sky-deep)}
+.brand .bell{width:38px;height:38px;border-radius:50%;background:var(--red);color:#fff;display:grid;place-items:center;font-size:20px;box-shadow:0 4px 10px rgba(255,91,91,.35)}
+.brand small{display:block;font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.5px}
+.side-profile{background:linear-gradient(150deg,#4FC3F7,#2196F3);color:#fff;border-radius:22px;padding:16px 12px;text-align:center;box-shadow:0 8px 18px rgba(33,150,243,.28);margin-bottom:6px}
+.side-profile .ava{font-size:48px;line-height:1;filter:drop-shadow(0 3px 4px rgba(0,0,0,.15))}
+.side-profile .nm{font-weight:900;font-size:16px;margin-top:6px}
+.side-profile .lv{display:inline-block;background:rgba(255,255,255,.25);border-radius:20px;padding:2px 12px;font-size:12px;font-weight:800;margin-top:4px}
+.side-profile .st{display:flex;align-items:center;justify-content:center;gap:6px;font-size:26px;font-weight:900;color:#FFF0A8;margin-top:8px;text-shadow:0 2px 6px rgba(120,60,0,.25)}
+.side-profile .st .ico{width:34px;height:34px;filter:drop-shadow(0 2px 3px rgba(0,0,0,.18))}
+.nav-btn{display:flex;align-items:center;gap:12px;width:100%;min-height:58px;padding:0 16px;border-radius:18px;
+  font-size:16px;font-weight:800;color:#5E7B9E;text-align:left;transition:.18s}
+.nav-btn .ic{font-size:24px;width:30px;text-align:center}
+.nav-btn.active{background:linear-gradient(135deg,#39B6FF,#1E88E5);color:#fff;box-shadow:0 8px 18px rgba(30,136,229,.32)}
+.nav-btn:active{transform:scale(.97)}
+.side-foot{margin-top:auto;font-size:11px;color:#9AB0C8;text-align:center;line-height:1.6}
+
+.main{flex:1;min-width:0;display:flex;flex-direction:column;padding:0 22px 30px}
+.topbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:14px 4px 12px;position:sticky;top:0;z-index:20;
+  background:rgba(255,255,255,.82);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border-bottom:2px solid rgba(255,255,255,.85);box-shadow:0 4px 18px rgba(41,152,232,.06)}
+.head-profile{display:flex;align-items:center;gap:10px;min-width:0}
+.head-profile .ava{width:52px;height:52px;border-radius:50%;background:#fff;display:grid;place-items:center;font-size:32px;box-shadow:var(--shadow);flex:none;border:3px solid #fff}
+.head-profile .who{min-width:0}
+.head-profile .nm{font-weight:900;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.head-profile .badges{display:flex;gap:6px;align-items:center;margin-top:3px}
+.lv-chip{background:linear-gradient(135deg,#FFB74D,#FF8F00);color:#fff;font-weight:900;font-size:12px;padding:3px 10px;border-radius:20px;white-space:nowrap}
+.star-chip{display:inline-flex;align-items:center;gap:4px;background:linear-gradient(135deg,#FFE082,#FFB300);color:#7A4A00;font-weight:900;font-size:22px;line-height:1;padding:6px 14px 6px 8px;border-radius:22px;box-shadow:0 5px 14px rgba(255,179,0,.42),inset 0 2px 0 rgba(255,255,255,.6);white-space:nowrap}
+.star-chip .ico{width:28px!important;height:28px!important;filter:drop-shadow(0 1px 2px rgba(150,80,0,.35))}
+.progress-wrap{flex:1;min-width:180px;max-width:520px;margin:0 auto}
+.progress-label{display:flex;justify-content:space-between;font-size:13px;font-weight:800;color:#4A6E96;margin-bottom:5px}
+.progress-label b{color:var(--sky-deep)}
+.progress-track{height:16px;background:#fff;border-radius:20px;box-shadow:inset 0 2px 5px rgba(41,152,232,.14);overflow:hidden;border:2px solid #fff}
+.progress-fill{height:100%;border-radius:20px;background:linear-gradient(90deg,#7BE0A8,#38C78A);transition:width .7s cubic-bezier(.2,.8,.2,1);min-width:0}
+.view{flex:1;animation:fadeIn .3s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.sec-title{font-size:22px;font-weight:900;margin:6px 0 14px;display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.78);border:2px solid rgba(255,255,255,.9);border-radius:16px;padding:7px 12px;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);box-shadow:0 4px 14px rgba(41,152,232,.08)}
+.sec-title span{font-size:14px;font-weight:700;color:var(--muted)}
+
+/* ---------- task cards ---------- */
+.task-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(226px,1fr));gap:16px;align-items:stretch}
+.task-card{perspective:1200px;height:196px;cursor:pointer;user-select:none;-webkit-user-select:none}
+.task-card-inner{position:relative;width:100%;height:100%;transform-style:preserve-3d;transition:transform .62s cubic-bezier(.3,.85,.3,1)}
+.task-card.flipped .task-card-inner{transform:rotateY(180deg)}
+.card-face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:var(--radius);
+  background:rgba(255,255,255,.96);box-shadow:var(--shadow);border:3px solid #fff;padding:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden}
+.card-face::before{content:"";position:absolute;top:-38px;right:-30px;width:96px;height:96px;border-radius:50%;background:rgba(90,200,250,.10)}
+.task-card:nth-child(3n+2) .card-face::before{background:rgba(255,201,51,.14)}
+.task-card:nth-child(3n+3) .card-face::before{background:rgba(255,91,91,.10)}
+.card-face .emoji{font-size:52px;line-height:1.1;filter:drop-shadow(0 4px 5px rgba(0,0,0,.10))}
+.card-face .tname{font-size:17px;font-weight:900;margin-top:8px;text-align:center;line-height:1.25}
+.card-face .meta{font-size:12px;color:var(--muted);margin-top:5px;font-weight:700}
+.star-tag{position:absolute;top:10px;right:10px;background:var(--star);color:#8A5A00;font-size:13px;font-weight:900;padding:4px 10px;border-radius:20px;z-index:2}
+.done-badge{position:absolute;top:9px;left:9px;width:32px;height:32px;border-radius:50%;background:var(--green);color:#fff;display:grid;place-items:center;font-size:18px;font-weight:900;z-index:2;box-shadow:0 4px 10px rgba(56,199,138,.35)}
+.task-card.done .card-face{background:linear-gradient(145deg,#F2FFF8,#E4F9EE)}
+.task-card.done .card-face .emoji{opacity:.65}
+.card-back{transform:rotateY(180deg);background:linear-gradient(145deg,#FFF9E0,#FFEFC2)!important;justify-content:center;gap:4px}
+.card-back .big-star{font-size:60px;animation:pop .5s cubic-bezier(.2,1.6,.4,1)}
+.card-back .yay{font-size:20px;font-weight:900;color:#C77C00}
+@keyframes pop{from{transform:scale(.2) rotate(-40deg)}to{transform:scale(1) rotate(0)}}
+.star-particle{position:absolute;font-size:24px;pointer-events:none;z-index:50;animation:floatUp .95s ease-out forwards}
+@keyframes floatUp{0%{opacity:1;transform:translate(0,0) scale(.4) rotate(0)}100%{opacity:0;transform:translate(var(--dx),var(--dy)) scale(1.5) rotate(200deg)}}
+
+.empty{text-align:center;padding:50px 20px;color:var(--muted);font-size:16px;font-weight:700;background:rgba(255,255,255,.86);border:3px solid #fff;border-radius:var(--radius);box-shadow:var(--shadow);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.empty .e-emoji{font-size:54px;display:block;margin-bottom:10px;opacity:.7}
+
+/* ---------- shop ---------- */
+.shop-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:16px}
+.product-card{background:rgba(255,255,255,.96);border:3px solid #fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:14px;text-align:center;display:flex;flex-direction:column;gap:8px}
+.product-pic{width:100%;height:120px;border-radius:18px;object-fit:cover;background:linear-gradient(145deg,#EAF7FF,#FFF6DA);display:grid;place-items:center;font-size:58px;overflow:hidden}
+.product-pic img{width:100%;height:100%;object-fit:cover}
+.product-card .pname{font-weight:900;font-size:16px;line-height:1.3}
+.product-card .pprice{color:#E69500;font-weight:900;font-size:16px}
+.big-btn{width:100%;min-height:50px;border-radius:16px;background:linear-gradient(135deg,#FFC933,#FFA726);color:#fff;font-weight:900;font-size:16px;box-shadow:0 6px 14px rgba(255,167,38,.34);transition:.15s}
+.big-btn:active{transform:scale(.96)}
+.big-btn:disabled{background:#CFD9E5;box-shadow:none;color:#8CA0B8;cursor:not-allowed}
+.btn-red{background:linear-gradient(135deg,#FF7B7B,#FF4D4D);box-shadow:0 6px 14px rgba(255,77,77,.3);color:#fff}
+.btn-blue{background:linear-gradient(135deg,#5AC8FA,#1E88E5);box-shadow:0 6px 14px rgba(30,136,229,.28);color:#fff}
+.btn-green{background:linear-gradient(135deg,#6FE0AE,#28B77A);box-shadow:0 6px 14px rgba(40,183,122,.28);color:#fff}
+.btn-gray{background:#EEF3F9;color:#68809E;box-shadow:none}
+.small-btn{padding:9px 14px;border-radius:12px;font-size:13px;font-weight:800;min-height:40px}
+
+/* ---------- parent ---------- */
+.pill-tabs{display:flex;gap:8px;overflow-x:auto;padding:4px 2px 12px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.pill-tabs::-webkit-scrollbar{display:none}
+.pill{white-space:nowrap;padding:10px 16px;border-radius:20px;background:#fff;color:#66809F;font-weight:800;font-size:14px;box-shadow:0 3px 10px rgba(41,152,232,.10);flex:none}
+.pill.active{background:linear-gradient(135deg,#39B6FF,#1E88E5);color:#fff}
+.panel{background:rgba(255,255,255,.94);border:3px solid #fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:18px;margin-bottom:16px}
+.panel h4{margin:0 0 14px;font-size:17px;font-weight:900;display:flex;align-items:center;gap:8px}
+.row-list{display:flex;flex-direction:column;gap:10px}
+.row-item{display:flex;align-items:center;gap:12px;background:#F7FBFF;border:2px solid #EAF3FC;border-radius:16px;padding:12px 14px;min-height:64px}
+.row-item .r-emoji{font-size:28px;flex:none;width:38px;text-align:center}
+.row-item .r-main{flex:1;min-width:0}
+.row-item .r-title{font-weight:900;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row-item .r-sub{font-size:12px;color:var(--muted);margin-top:3px;font-weight:600}
+.row-item .r-actions{display:flex;gap:6px;flex:none;flex-wrap:wrap;justify-content:flex-end}
+.freq-tag{display:inline-block;background:#E8F4FF;color:#2E7FC4;border-radius:10px;padding:2px 8px;font-size:11px;font-weight:800;margin-left:6px}
+.status-tag{border-radius:12px;padding:4px 10px;font-size:12px;font-weight:900}
+.s-pending{background:#FFF3D6;color:#B97800}.s-approved{background:#DFF7EA;color:#168A55}.s-rejected{background:#FFE5E5;color:#C03A3A}
+.earn{color:#1EA46B;font-weight:900}.spend{color:#E06060;font-weight:900}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.stat-card{background:linear-gradient(145deg,#fff,#F2FAFF);border:3px solid #fff;border-radius:20px;padding:16px;text-align:center;box-shadow:var(--shadow)}
+.stat-card .num{font-size:30px;font-weight:900;color:var(--sky-deep)}
+.stat-card .lbl{font-size:13px;color:var(--muted);font-weight:700;margin-top:2px}
+.chart{display:flex;align-items:flex-end;gap:10px;height:160px;padding:10px 4px 0;overflow:hidden}
+.chart-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;height:100%;justify-content:flex-end}
+.chart-bar{width:100%;max-width:44px;border-radius:12px 12px 4px 4px;background:linear-gradient(180deg,#5AC8FA,#1E88E5);min-height:4px;transition:height .6s}
+.chart-col span{font-size:11px;color:var(--muted);font-weight:700;white-space:nowrap}
+.chart-col b{font-size:12px;color:var(--sky-deep)}
+
+/* ---------- modal / toast ---------- */
+#modalRoot:empty{display:none}
+.modal-mask{position:fixed;inset:0;background:rgba(20,50,80,.45);z-index:100;display:grid;place-items:center;padding:16px;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}
+.modal-card{width:min(480px,100%);max-height:86vh;max-height:86dvh;overflow-y:auto;background:#fff;border-radius:26px;padding:20px;box-shadow:0 20px 60px rgba(10,40,70,.3);animation:popIn .25s ease}
+@keyframes popIn{from{opacity:0;transform:scale(.9) translateY(10px)}to{opacity:1;transform:none}}
+.modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.modal-head h3{margin:0;font-size:19px;font-weight:900}
+.modal-head button{font-size:22px;color:var(--muted);width:36px;height:36px;border-radius:50%;background:#F2F6FA}
+.modal-card label{display:block;font-size:13px;font-weight:800;color:#5E7B9E;margin:12px 0 5px}
+.modal-card input[type=text],.modal-card input[type=number],.modal-card input[type=password],.modal-card select,.modal-card textarea{
+  width:100%;min-height:46px;border:2px solid #E3EEFA;border-radius:14px;padding:10px 12px;outline:none;background:#FAFDFF}
+.modal-card input:focus,.modal-card select:focus{border-color:var(--sky)}
+.checkline{display:flex!important;align-items:center;gap:10px;font-size:14px!important;color:var(--ink)!important;margin-top:16px!important}
+.checkline input{width:22px;height:22px;accent-color:var(--sky-deep)}
+.week-box{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.week-box label{background:#F0F6FC;border-radius:10px;padding:7px 9px;margin:0;font-size:13px;min-width:38px;text-align:center;cursor:pointer}
+.week-box input{display:none}
+.week-box label.on{background:var(--sky-deep);color:#fff}
+.modal-actions{display:flex;gap:10px;margin-top:20px}
+.modal-actions button{flex:1;min-height:50px;border-radius:14px;font-weight:900;font-size:15px}
+#toastRoot{position:fixed;left:50%;top:18%;transform:translateX(-50%);z-index:200;pointer-events:none;display:flex;flex-direction:column;gap:8px;align-items:center}
+.toast{background:rgba(39,74,120,.92);color:#fff;padding:12px 20px;border-radius:20px;font-weight:800;font-size:15px;box-shadow:0 8px 24px rgba(0,0,0,.2);animation:toastIn .25s ease;white-space:nowrap;max-width:88vw;overflow:hidden;text-overflow:ellipsis}
+@keyframes toastIn{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:none}}
+
+/* ---------- 哆啦A梦 SVG 图标 ---------- */
+#doraSprite{position:absolute;width:0;height:0;overflow:hidden}
+.ico{width:1.1em;height:1.1em;display:inline-block;vertical-align:-.18em;flex:none}
+.ico-xl{width:64px;height:64px}.ico-lg{width:44px;height:44px}.ico-md{width:32px;height:32px}.ico-sm{width:22px;height:22px}
+.ava .ico{width:76%;height:76%}
+.side-profile .ava{height:64px;display:grid;place-items:center;font-size:0}
+.side-profile .ava .ico{width:58px;height:58px}
+.star-tag .ico,.star-chip .ico,.side-profile .lv .ico{width:16px;height:16px}
+.r-sub .ico{width:14px;height:14px}
+.pprice .ico{width:18px;height:18px}
+.card-back .big-star .ico{animation:pop .5s cubic-bezier(.2,1.6,.4,1)}
+.icon-picker{display:grid;grid-template-columns:repeat(8,1fr);gap:6px;margin-top:6px}
+.ip{aspect-ratio:1;border-radius:12px;background:#F2F8FF;border:2px solid transparent;display:grid;place-items:center;min-height:42px}
+.ip .ico{width:82%;height:82%}
+.ip.on{background:#FFF3D6;border-color:var(--star)}
+.e-emoji .ico{opacity:.85}
+
+/* ---------- bottom tab (iPhone) ---------- */
+.tabbar{display:none}
+
+@media(max-width:820px){
+  .sidebar{display:none}
+  .main{padding:0 14px calc(var(--tab-h) + env(safe-area-inset-bottom) + 20px)}
+  .topbar{padding:10px 0 10px;gap:8px}
+  .head-profile .ava{width:44px;height:44px;font-size:27px}
+  .head-profile .nm{font-size:14px}
+  .progress-wrap{order:3;flex-basis:100%;max-width:none;min-width:0}
+  .head-profile .nm{font-size:14px}
+  .star-chip{font-size:20px;padding:5px 12px 5px 7px}
+  .star-chip .ico{width:25px!important;height:25px!important}
+  .sec-title{font-size:19px;margin:8px 0 12px}
+  .task-grid{grid-template-columns:1fr;gap:14px}
+  .task-card{height:158px}
+  .card-face .emoji .ico{width:50px;height:50px}
+  .card-face .tname{font-size:18px}
+  .shop-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .product-pic{height:100px;font-size:48px}
+  .tabbar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:60;height:calc(var(--tab-h) + env(safe-area-inset-bottom));
+    padding:6px 8px calc(6px + env(safe-area-inset-bottom));background:rgba(255,255,255,.96);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    border-top:2px solid #EAF3FC;box-shadow:0 -6px 24px rgba(41,152,232,.10)}
+  .tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border-radius:16px;color:#8298B2;font-size:11px;font-weight:800;min-height:60px}
+  .tab .ic{font-size:25px;line-height:1}
+  .tab.active{color:var(--sky-deep);background:#EAF6FF}
+  .tab:active{transform:scale(.94)}
+  .row-item{flex-wrap:wrap}
+  .row-item .r-actions{width:100%;justify-content:flex-start}
+}
+@media(max-width:370px){.shop-grid{grid-template-columns:1fr}}
+@media(min-width:821px){.head-profile{display:none}}
+@media(prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+</style>
 </head>
 <body>
-<div class="container">
-  <div class="sidebar">
-    <div class="user-card">
-      <div class="star-big">⭐</div>
-      <div>Lv.<span id="level">1</span> · 再得<span id="nextNeed">9</span>⭐升级</div>
-      <div style="font-size:28px;margin-top:8px"><span id="totalStar">0</span> 颗星星</div>
-    </div>
-    <div class="menu-item active" data-page="today">今日打卡</div>
-    <div class="menu-item" data-page="shop">星星商城</div>
-    <div class="menu-item" data-page="setting">家长设置</div>
-  </div>
-  <div class="main">
-    <div class="progress-bar-wrap">
-      <div class="progress-top">
-        <span>今日进度 <span id="doneCount">0</span>/<span id="allCount">0</span></span>
-        <span id="percent">0%</span>
-      </div>
-      <div class="progress-bg">
-        <div class="progress-fill" id="progressBar" style="width:0%"></div>
-      </div>
-    </div>
-    <div><h3>今天要做的事 点一下卡片就能打卡哦!</h3></div>
-    <div class="task-grid" id="taskList"></div>
-  </div>
+<!-- 哆啦A梦主题图标库：全部内联 SVG，零图片请求 -->
+<svg id="doraSprite" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" aria-hidden="true">
+<symbol id="i-dora" viewBox="0 0 100 100">
+  <circle cx="24" cy="19" r="10" fill="#29b6f6"/><circle cx="76" cy="19" r="10" fill="#29b6f6"/>
+  <circle cx="50" cy="50" r="37" fill="#29b6f6"/>
+  <ellipse cx="50" cy="60" rx="28" ry="25" fill="#fff"/>
+  <ellipse cx="39" cy="43" rx="7" ry="10" fill="#fff" stroke="#37474f" stroke-width="1.4"/>
+  <ellipse cx="61" cy="43" rx="7" ry="10" fill="#fff" stroke="#37474f" stroke-width="1.4"/>
+  <circle cx="41" cy="45" r="3" fill="#263238"/><circle cx="59" cy="45" r="3" fill="#263238"/>
+  <circle cx="50" cy="55" r="5" fill="#e53935"/>
+  <path d="M50 60 v6 M50 66 q-13 12 -24 0 M50 66 q13 12 24 0" fill="none" stroke="#37474f" stroke-width="2.4" stroke-linecap="round"/>
+  <g stroke="#37474f" stroke-width="1.5" stroke-linecap="round"><path d="M23 51 L9 47 M23 57 L7 57 M23 63 L9 69"/><path d="M77 51 L91 47 M77 57 L93 57 M77 63 L91 69"/></g>
+  <path d="M20 75 q30 16 60 0" fill="none" stroke="#e53935" stroke-width="5"/>
+  <circle cx="50" cy="82" r="7" fill="#ffca28" stroke="#f9a825" stroke-width="1.5"/><path d="M47 80 h6" stroke="#f9a825" stroke-width="1.5"/>
+</symbol>
+<symbol id="i-bell" viewBox="0 0 100 100">
+  <path d="M32 30 q18 -14 36 0" fill="none" stroke="#e53935" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="50" cy="58" r="27" fill="#ffca28" stroke="#f9a825" stroke-width="3"/>
+  <path d="M28 50 q22 10 44 0" fill="none" stroke="#f9a825" stroke-width="2.5"/><circle cx="50" cy="58" r="5" fill="#8d6e00"/>
+  <path d="M50 63 v8" stroke="#8d6e00" stroke-width="3" stroke-linecap="round"/>
+</symbol>
+<symbol id="i-dorayaki" viewBox="0 0 100 100">
+  <ellipse cx="50" cy="66" rx="35" ry="15" fill="#8d5524"/>
+  <ellipse cx="50" cy="55" rx="35" ry="14" fill="#fff3d6"/>
+  <ellipse cx="50" cy="45" rx="35" ry="16" fill="#c88141"/>
+  <ellipse cx="50" cy="42" rx="27" ry="10" fill="#d99b5c" opacity=".8"/>
+  <path d="M28 40 q22 -8 44 0" fill="none" stroke="#a9642f" stroke-width="2" opacity=".6"/>
+</symbol>
+<symbol id="i-copter" viewBox="0 0 100 100">
+  <path d="M48 44 Q24 18 10 32 Q28 50 48 48 Z" fill="#42bd9b" stroke="#2a9d7f" stroke-width="2"/>
+  <path d="M52 44 Q76 18 90 32 Q72 50 52 48 Z" fill="#42bd9b" stroke="#2a9d7f" stroke-width="2"/>
+  <rect x="45" y="44" width="10" height="42" rx="5" fill="#fff" stroke="#b0bec5" stroke-width="2"/>
+  <circle cx="50" cy="46" r="7" fill="#ffca28" stroke="#f9a825" stroke-width="2"/>
+</symbol>
+<symbol id="i-door" viewBox="0 0 100 100">
+  <rect x="16" y="10" width="68" height="80" rx="10" fill="#f06292" stroke="#ad1457" stroke-width="2"/>
+  <rect x="24" y="18" width="52" height="72" rx="6" fill="#4fc3f7"/>
+  <path d="M30 28 h30" stroke="#fff" stroke-width="3" opacity=".6" stroke-linecap="round"/>
+  <circle cx="64" cy="56" r="4.5" fill="#ffca28"/>
+</symbol>
+<symbol id="i-time" viewBox="0 0 100 100">
+  <ellipse cx="50" cy="82" rx="36" ry="9" fill="#90a4ae"/>
+  <path d="M18 80 V52 a32 32 0 0 1 64 0 V80 Z" fill="#ef5350"/>
+  <rect x="30" y="46" width="40" height="28" rx="6" fill="#ffe0b2"/>
+  <circle cx="50" cy="60" r="10" fill="#fff"/>
+  <path d="M50 54 v6 l5 3" fill="none" stroke="#e53935" stroke-width="2.5" stroke-linecap="round"/>
+  <circle cx="26" cy="76" r="4" fill="#ffca28"/><circle cx="74" cy="76" r="4" fill="#ffca28"/>
+</symbol>
+<symbol id="i-pocket" viewBox="0 0 100 100">
+  <path d="M36 34 l4 -16 7 12 8 -14 7 14 7 -10 3 14" fill="none" stroke="#ffca28" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M18 46 h64 v32 a10 10 0 0 1 -10 10 H28 a10 10 0 0 1 -10 -10 Z" fill="#fff" stroke="#29b6f6" stroke-width="4"/>
+  <path d="M18 46 Q50 60 82 46" fill="none" stroke="#1976d2" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="50" cy="72" r="5" fill="#e53935"/>
+</symbol>
+<symbol id="i-star-mini" viewBox="0 0 100 100">
+  <path d="M50 8 L62 36 L93 38 L69 58 L77 89 L50 72 L23 89 L31 58 L7 38 L38 36 Z" fill="#FF8F00" stroke="#E65100" stroke-width="4" stroke-linejoin="round"/>
+</symbol>
+<symbol id="i-bread" viewBox="0 0 100 100">
+  <path d="M18 40 Q18 22 36 24 Q50 16 64 24 Q82 22 82 40 V76 Q82 86 72 86 H28 Q18 86 18 76 Z" fill="#ffcc80" stroke="#e65100" stroke-width="2.5"/>
+  <path d="M26 42 Q26 30 40 32 Q50 26 60 32 Q74 30 74 42 V72 Q74 80 66 80 H34 Q26 80 26 72 Z" fill="#ffe0b2"/>
+  <text x="50" y="65" text-anchor="middle" font-size="30" font-weight="900" font-family="Arial" fill="#8d5524">A</text>
+</symbol>
+<symbol id="i-cloak" viewBox="0 0 100 100">
+  <path d="M50 12 Q28 20 26 42 L16 84 Q50 96 84 84 L74 42 Q72 20 50 12 Z" fill="#81d4fa" stroke="#29b6f6" stroke-width="2.5"/>
+  <path d="M40 24 Q50 30 60 24" fill="none" stroke="#fff" stroke-width="3" opacity=".8"/><circle cx="50" cy="46" r="9" fill="#fff"/>
+</symbol>
+<symbol id="i-light" viewBox="0 0 100 100">
+  <path d="M86 30 L98 16 V84 L86 70 Z" fill="#fff9c4" opacity=".9"/>
+  <path d="M64 38 L86 30 V70 L64 62 Z" fill="#ffb300"/>
+  <rect x="30" y="42" width="34" height="16" rx="5" fill="#ffca28" stroke="#f9a825" stroke-width="2"/>
+  <rect x="22" y="46" width="10" height="8" rx="3" fill="#e53935"/>
+</symbol>
+<symbol id="i-star" viewBox="0 0 100 100">
+  <path d="M50 8 L62 36 L93 38 L69 58 L77 89 L50 72 L23 89 L31 58 L7 38 L38 36 Z" fill="#ffca28" stroke="#f9a825" stroke-width="3" stroke-linejoin="round"/>
+  <circle cx="41" cy="49" r="2.6" fill="#8d6e00"/><circle cx="59" cy="49" r="2.6" fill="#8d6e00"/>
+  <path d="M43 58 q7 7 14 0" fill="none" stroke="#8d6e00" stroke-width="2.6" stroke-linecap="round"/>
+</symbol>
+<symbol id="i-today" viewBox="0 0 100 100">
+  <rect x="14" y="18" width="72" height="70" rx="10" fill="#fff" stroke="#29b6f6" stroke-width="3"/>
+  <path d="M14 36 h72" stroke="#29b6f6" stroke-width="3"/>
+  <rect x="14" y="18" width="72" height="18" rx="9" fill="#29b6f6"/>
+  <rect x="30" y="12" width="6" height="12" rx="3" fill="#e53935"/><rect x="64" y="12" width="6" height="12" rx="3" fill="#e53935"/>
+  <circle cx="50" cy="66" r="17" fill="#29b6f6"/>
+  <ellipse cx="50" cy="71" rx="12" ry="10" fill="#fff"/>
+  <circle cx="45" cy="63" r="2" fill="#263238"/><circle cx="55" cy="63" r="2" fill="#263238"/>
+  <circle cx="50" cy="68" r="2.6" fill="#e53935"/>
+</symbol>
+<symbol id="i-tools" viewBox="0 0 100 100">
+  <path d="M38 34 v-6 a12 12 0 0 1 24 0 v6" fill="none" stroke="#b71c1c" stroke-width="5"/>
+  <rect x="14" y="34" width="72" height="52" rx="9" fill="#e53935"/><path d="M14 48 h72" stroke="#b71c1c" stroke-width="3"/>
+  <circle cx="50" cy="64" r="10" fill="#ffca28" stroke="#f9a825" stroke-width="2"/><circle cx="50" cy="64" r="3" fill="#8d6e00"/>
+</symbol>
+<symbol id="i-book" viewBox="0 0 100 100">
+  <path d="M14 22 q18 -8 36 2 v62 q-18 -10 -36 -2 Z" fill="#4fc3f7" stroke="#0288d1" stroke-width="2.5"/>
+  <path d="M86 22 q-18 -8 -36 2 v62 q18 -10 36 -2 Z" fill="#81d4fa" stroke="#0288d1" stroke-width="2.5"/>
+  <circle cx="50" cy="52" r="14" fill="#fff"/>
+  <circle cx="45" cy="50" r="2" fill="#263238"/><circle cx="55" cy="50" r="2" fill="#263238"/><circle cx="50" cy="55" r="2.6" fill="#e53935"/>
+</symbol>
+<symbol id="i-check" viewBox="0 0 100 100">
+  <circle cx="50" cy="50" r="44" fill="#38c78a"/>
+  <path d="M28 51 L43 66 L73 36" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+</symbol>
+<symbol id="i-rocket" viewBox="0 0 100 100">
+  <path d="M50 8 Q72 28 72 58 L28 58 Q28 28 50 8 Z" fill="#fff" stroke="#29b6f6" stroke-width="2.5"/>
+  <circle cx="50" cy="40" r="11" fill="#4fc3f7" stroke="#0288d1" stroke-width="2"/>
+  <path d="M28 48 L14 66 L28 62 Z M72 48 L86 66 L72 62 Z" fill="#e53935"/>
+  <path d="M40 60 q10 18 10 26 q0 -8 10 -26 Z" fill="#ffca28"/>
+</symbol>
+</svg>
+<div id="bgLayer" aria-hidden="true"></div>
+<div id="app">
+  <aside class="sidebar">
+    <div class="brand"><span class="bell"><svg class="ico"><use href="#i-star"></use></svg></span><div>星星打卡<small>STAR REWARD</small></div></div>
+    <div class="side-profile" id="sideProfile"></div>
+    <button class="nav-btn active" data-act="nav" data-view="today"><svg class="ico ico-md"><use href="#i-today"></use></svg> 今日打卡</button>
+    <button class="nav-btn" data-act="nav" data-view="shop"><svg class="ico ico-md"><use href="#i-pocket"></use></svg> 星星商城</button>
+    <button class="nav-btn" data-act="nav" data-view="parent"><svg class="ico ico-md"><use href="#i-tools"></use></svg> 家长设置</button>
+    <div class="side-foot">每天进步一点点<br>加油，小朋友！</div>
+  </aside>
+  <main class="main">
+    <header class="topbar">
+      <div class="head-profile" id="headProfile"></div>
+      <div class="progress-wrap" id="progressWrap"></div>
+    </header>
+    <section class="view" id="view-today"></section>
+    <section class="view hidden" id="view-shop"></section>
+    <section class="view hidden" id="view-parent"></section>
+  </main>
+  <nav class="tabbar">
+    <button class="tab active" data-act="nav" data-view="today"><svg class="ico ico-md"><use href="#i-today"></use></svg>今日打卡</button>
+    <button class="tab" data-act="nav" data-view="shop"><svg class="ico ico-md"><use href="#i-pocket"></use></svg>星星商城</button>
+    <button class="tab" data-act="nav" data-view="parent"><svg class="ico ico-md"><use href="#i-tools"></use></svg>家长设置</button>
+  </nav>
 </div>
+<div id="modalRoot"></div>
+<div id="toastRoot"></div>
+<input type="file" id="importFile" accept="application/json" class="hidden">
 
 <script>
-// ========== 【固定唯一用户ID，所有设备共用这一套数据】 ==========
-const FIX_USER_ID = "kid001"; 
+"use strict";
+/* ============================ 数据层 ============================ */
+/* ============================ Supabase 云端配置 ============================ */
+const SUPABASE_URL="https://puyxgwnbmwbmsieroxnj.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY="sb_publishable_BWK7Cj8BQcCepw_F_A5fxw_RcqapHUu";
+const USER_ID='junjun01';
+const SB=(window.supabase&&window.supabase.createClient)?window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY):null;
 
-// 在这里填入你的supabase信息
-const SUPABASE_URL = "https://puyxgwnbmwbmsieroxnj.supabase.co";
-const SUPABASE_KEY = "sb_publishable_BWK7Cj8BQcCepw_F_A5fxw_RcqapHUu";
+const DB_KEY='star_reward_db_v1';
+const LEVEL_STEPS=[0,20,60,120,200];
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+/* UUID v4：云端四张表主键均为 uuid，本地也统一用 uuid 作为 id */
+const uid=()=>(crypto.randomUUID?crypto.randomUUID():'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0,v=c==='x'?r:(r&0x3|0x8);return v.toString(16)}));
+const iso=()=>new Date().toISOString();
+function localDate(d=new Date()){const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`}
+const weekCN=['日','一','二','三','四','五','六'];
 
-const { createClient } = supabase;
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+/* 哆啦A梦主题图标：模块大图标、小图标统一使用 */
+const DORA_ICONS=['star','dora','bell','dorayaki','copter','door','time','pocket','bread','cloak','light','star-mini','book','tools','today','check','rocket'];
+const ICON_NAMES={star:'星星',dora:'哆啦A梦',bell:'铃铛',dorayaki:'铜锣烧',copter:'竹蜻蜓',door:'任意门',time:'时光机',pocket:'四次元口袋',bread:'记忆面包',cloak:'隐身斗篷',light:'缩小灯','star-mini':'小星星',book:'书本',tools:'工具箱',today:'日历',check:'完成',rocket:'火箭'};
+function ico(id,cls){return `<svg class="ico ${cls||''}"><use href="#i-${id}"></use></svg>`}
+function iconFor(o,cls){
+  const v=o&&(o.icon||o.emoji);const s=String(v||'');
+  const id=s.startsWith('i-')?s.slice(2):s;
+  if(DORA_ICONS.includes(id))return ico(id,cls);
+  return `<span class="${cls||''}">${esc(v||'⭐')}</span>`;
+}
 
-let userData = null;
-let taskList = [];
+function defaultDB(){
+  return {
+    version:1,
+    child:{id:uid(),name:'小星星',avatar:'star',totalEarned:0,starBalance:0,pin:'1234',createdAt:iso()},
+    tasks:[
+      {id:uid(),name:'汉字描红',icon:'bread',emoji:'📝',stars:2,frequency:{type:'daily',days:[]},needConfirm:false,active:true,createdAt:iso()},
+      {id:uid(),name:'课文精读',icon:'book',emoji:'📖',stars:3,frequency:{type:'daily',days:[]},needConfirm:false,active:true,createdAt:iso()},
+      {id:uid(),name:'数学计算题',icon:'light',emoji:'🔢',stars:2,frequency:{type:'daily',days:[]},needConfirm:false,active:true,createdAt:iso()},
+      {id:uid(),name:'英语跟读',icon:'copter',emoji:'🔤',stars:2,frequency:{type:'weekly',days:[1,3,5]},needConfirm:false,active:true,createdAt:iso()},
+      {id:uid(),name:'整理书包',icon:'pocket',emoji:'🎒',stars:1,frequency:{type:'daily',days:[]},needConfirm:true,active:true,createdAt:iso()}
+    ],
+    checkins:[],transactions:[],
+    products:[
+      {id:uid(),name:'看动画片 30 分钟',image:'',icon:'door',emoji:'📺',cost:15,stock:-1,active:true,createdAt:iso()},
+      {id:uid(),name:'铜锣烧一个',image:'',icon:'dorayaki',emoji:'🍦',cost:12,stock:-1,active:true,createdAt:iso()},
+      {id:uid(),name:'坐时光机旅行',image:'',icon:'time',emoji:'🌳',cost:30,stock:-1,active:true,createdAt:iso()},
+      {id:uid(),name:'新绘本一本',image:'',icon:'book',emoji:'📚',cost:25,stock:3,active:true,createdAt:iso()}
+    ],
+    orders:[],
+    settings:{sfxOn:true,levelSteps:LEVEL_STEPS.slice()}
+  };
+}
+/* ---------- 四表字段映射（本地 db ⇄ Supabase） ----------
+   frequency.days 编码到 sort：低 7 位为星期掩码（bit0=周日…bit6=周六）。
+   freq_type 统一用 daily / weekday / once；本地 weekly 视为 weekday。
+   records.confirmed：true=approved，false=pending；rejected 通过 points<0 表达。
+   coupons：status pending/done；done=通过，rejected 用 'rejected'（text 可存）。
+--------------------------------------------------------- */
+const SBFREQ={daily:'daily',weekly:'weekday',weekday:'weekday',once:'once'};
+const SBSTATUS={'approved':'done','pending':'pending','rejected':'rejected'};
+function daysToMask(days){return (days||[]).reduce((m,d)=>m|(1<<(+d)),0)}
+function maskToDays(sort){const m=sort||0;const a=[];for(let i=0;i<7;i++)if(m&(1<<i))a.push(i);return a}
+const taskToRow=t=>({id:t.id,user_id:USER_ID,name:t.name,points:+t.stars||0,
+  freq_type:SBFREQ[(t.frequency&&t.frequency.type)]||'daily',
+  need_confirm:!!t.needConfirm,sort:daysToMask(t.frequency&&t.frequency.days),
+  created_at:t.createdAt||iso(),updated_at:iso()});
+const rowToTask=r=>({id:r.id,name:r.name,icon:'star',emoji:'',stars:+r.points||0,
+  frequency:{type:r.freq_type==='weekday'?'weekly':r.freq_type||'daily',
+    days:r.freq_type==='weekday'?maskToDays(r.sort):[]},
+  needConfirm:!!r.need_confirm,active:true,createdAt:r.created_at||iso()});
 
-// 读取用户数据
-async function loadUser(){
-  const {data,error}=await supabase.from("users").select("*").eq("uid",FIX_USER_ID).single();
-  if(error){
-    // 不存在就新建这条用户记录
-    await supabase.from("users").insert([{uid:FIX_USER_ID,star:0,level:1}]);
-    userData = {uid:FIX_USER_ID,star:0,level:1};
+const rewardToRow=p=>({id:p.id,user_id:USER_ID,name:p.name,image_url:p.image||null,
+  cost:+p.cost||0,stock:Number.isFinite(+p.stock)?+p.stock:999,
+  sort:daysToMask([]),created_at:p.createdAt||iso(),updated_at:iso()});
+const rowToReward=r=>({id:r.id,name:r.name,image:r.image_url||'',icon:'dorayaki',emoji:'',
+  cost:+r.cost||0,stock:Number.isFinite(+r.stock)?+r.stock:999,
+  active:true,createdAt:r.created_at||iso()});
+
+/* points<0 表示驳回（界面仍需显示星星数为正），confirmed=false 表示待确认 */
+const checkinToRow=c=>({id:c.id,user_id:USER_ID,task_id:c.taskId,day:c.date,
+  points:(c.status==='rejected'?-1:1)*(+c.stars||0),confirmed:c.status==='approved',
+  created_at:c.createdAt||iso(),updated_at:c.reviewedAt||iso()});
+const rowToCheckin=(r,taskMap)=>({id:r.id,taskId:r.task_id,date:r.day,stars:Math.abs(+r.points||0),
+  status:(+r.points<0)?'rejected':(r.confirmed?'approved':'pending'),
+  createdAt:r.created_at||iso(),reviewedAt:r.updated_at||iso(),_name:taskMap[r.task_id]||''});
+
+/* coupons 表无 cost 列：落库时 cost 由关联 reward 回查；拉取时用商品表回查补全 */
+const couponToRow=o=>({id:o.id,user_id:USER_ID,reward_id:o.productId,
+  status:SBSTATUS[o.status]||'pending',created_at:o.createdAt||iso(),updated_at:o.reviewedAt||iso()});
+const rowToCoupon=(r,rewardMap)=>{const p=rewardMap[r.reward_id]||{};return {id:r.id,
+  productId:r.reward_id,productName:p.name||'已下架奖品',productImage:p.image||'',
+  productIcon:p.icon||'dorayaki',cost:(p.cost!=null?+p.cost:0),
+  status:r.status==='done'?'approved':(r.status==='rejected'?'rejected':'pending'),
+  createdAt:r.created_at||iso(),reviewedAt:r.updated_at||iso()}};
+
+/* ---------- 本地离线快照（localStorage 备份 + 离线兜底） ---------- */
+function loadDB(){
+  try{const raw=localStorage.getItem(DB_KEY);if(raw){const d=JSON.parse(raw);if(d&&d.child&&Array.isArray(d.tasks)){
+    d.settings=d.settings||{sfxOn:true,levelSteps:LEVEL_STEPS.slice()};
+    d.checkins=d.checkins||[];d.transactions=d.transactions||[];d.products=d.products||[];d.orders=d.orders||[];
+    return d;}}}catch(e){console.warn(e)}
+  // 首次建库：直接写本地缓存，不能调用 saveDB()（此时全局 db 尚未初始化完成，且无需推送云端）
+  const d=defaultDB();
+  try{localStorage.setItem(DB_KEY,JSON.stringify(d))}catch(e){}
+  return d;
+}
+let db=loadDB();
+
+/* ---------- 图片 / 图标检测 ---------- */
+const SKIP_SIZE_CHECK=['background-landscape.jpg','background-portrait.jpg'];
+function checkImageAsset(src){
+  if(SKIP_SIZE_CHECK.some(f=>String(src||'').indexOf(f)>-1))return true;
+  return typeof src==='string'&&src.length<2000;
+}
+
+/* ============ Supabase 同步引擎 ============
+   原则：上层只操作 db 内存对象 + 调用 saveDB()；本层负责 diff 推送与拉取重建。
+   任何网络异常都静默降级，本地功能完全可用（离线兜底）。              */
+let sbReady=false,syncing=false,pushTimer=null,remoteSync=false;
+const tables=['tasks','rewards','records','coupons'];
+
+/* 由 db 生成四表行数据 */
+function rowsFromDB(){
+  const taskMap={},rewardMap={};
+  db.tasks.forEach(t=>taskMap[t.id]=t.name);
+  db.products.forEach(p=>rewardMap[p.id]=p);
+  // 云端 records.task_id / coupons.reward_id 有外键约束：
+  // 已删除任务/商品的历史记录不再推送，避免整批 upsert 因外键失败（本地缓存仍完整保留）
+  const validRecords=db.checkins.filter(c=>taskMap[c.taskId]);
+  const validCoupons=db.orders.filter(o=>rewardMap[o.productId]);
+  return {
+    tasks:db.tasks.map(taskToRow),
+    rewards:db.products.map(rewardToRow),
+    records:validRecords.map(checkinToRow),
+    coupons:validCoupons.map(couponToRow),
+    _taskMap:taskMap,_rewardMap:rewardMap
+  };
+}
+
+/* 推送：只同步四张业务表；child/settings/流水继续留本地（表结构未提供） */
+async function pushToCloud(){
+  if(!SB||syncing||remoteSync)return;
+  syncing=true;
+  try{
+    const {tasks,rewards,records,coupons}=rowsFromDB();
+    const groups={tasks,rewards,records,coupons};
+    for(const tbl of tables){
+      const rows=groups[tbl];
+      const ids=rows.map(r=>r.id);
+      // 全表 by user_id 删除不在本地集合中的行（保持与本地一致）
+      const {error:delErr}=await SB.from(tbl).delete().eq('user_id',USER_ID).not('id','in',`(${ids.length?ids.join(','):'00000000-0000-0000-0000-000000000000'})`);
+      if(delErr)console.warn('[SB] delete',tbl,delErr.message);
+      if(rows.length){
+        const {error:upErr}=await SB.from(tbl).upsert(rows,{onConflict:'id'});
+        if(upErr)console.warn('[SB] upsert',tbl,upErr.message);
+      }
+    }
+    sbReady=true;
+  }catch(e){console.warn('[SB] push failed (offline fallback)',e&&e.message||e)}
+  finally{syncing=false}
+}
+
+/* 拉取：用云端四表重建业务数据，child/settings/流水从本地保留 */
+async function pullFromCloud(notify){
+  if(!SB||syncing)return;
+  syncing=true;remoteSync=true;
+  try{
+    const res={};
+    for(const tbl of tables){
+      const {data,error}=await SB.from(tbl).select('*').eq('user_id',USER_ID);
+      if(error)throw new Error(tbl+': '+error.message);
+      res[tbl]=data||[];
+    }
+    // 如果云端四表全空，说明是首次使用：把本地默认数据初始化到云端
+    const allEmpty=tables.every(t=>res[t].length===0);
+    if(allEmpty){remoteSync=false;syncing=false;await pushToCloud();if(notify)notify('云端已初始化');return}
+    const taskMap={};res.tasks.forEach(t=>taskMap[t.id]=t.name);
+    const rewardMap={};res.rewards.forEach(p=>rewardMap[p.id]=p);
+    const oldChild=db.child,oldSettings=db.settings,localAdjust=(db.transactions||[]).filter(t=>t.type==='adjust');
+    db.tasks=res.tasks.map(rowToTask);
+    db.products=res.rewards.map(rowToReward);
+    db.checkins=res.records.map(r=>rowToCheckin(r,taskMap));
+    db.orders=res.coupons.map(r=>rowToCoupon(r,rewardMap));
+    db.child=oldChild;db.settings=oldSettings;
+    db.transactions=localAdjust;
+    localStorage.setItem(DB_KEY,JSON.stringify(db));
+    sbReady=true;
+    if(notify)notify('已同步云端数据');
+  }catch(e){console.warn('[SB] pull failed (offline fallback)',e&&e.message||e)}
+  finally{syncing=false;remoteSync=false;renderAll()}
+}
+
+/* Realtime：四表变化触发重新拉取，多设备自动同步 */
+function subscribeRealtime(){
+  if(!SB)return;
+  try{
+    const ch=SB.channel('star-reward-'+USER_ID);
+    tables.forEach(tbl=>ch.on('postgres_changes',{event:'*',schema:'public',table:tbl},()=>{
+      if(syncing||remoteSync)return;
+      clearTimeout(pushTimer);
+      pushTimer=setTimeout(()=>pullFromCloud(false),400);
+    }));
+    ch.subscribe();
+  }catch(e){console.warn('[SB] realtime subscribe failed',e&&e.message||e)}
+}
+
+/* saveDB：本地缓存立即写（离线兜底），云端防抖增量推送 */
+function saveDB(){
+  try{
+    if((db.tasks||[]).some(t=>t.icon&&!checkImageAsset(t.icon)))console.warn('存在异常的打卡卡片图标，已忽略');
+    localStorage.setItem(DB_KEY,JSON.stringify(db));
+  }catch(e){console.warn('本地存储写入失败',e)}
+  if(SB){clearTimeout(pushTimer);pushTimer=setTimeout(pushToCloud,350)}
+}
+function addTx(type,amount,reason,refId){
+  db.child.starBalance+=amount;
+  if(type==='earn'||type==='adjust'&&amount>0)db.child.totalEarned+=amount;
+  db.transactions.unshift({id:uid(),type,amount,balanceAfter:db.child.starBalance,reason,refId:refId||'',createdAt:iso()});
+  if(db.transactions.length>2000)db.transactions.length=2000;
+}
+function getLevel(){const steps=db.settings.levelSteps||LEVEL_STEPS;let lv=1;for(let i=0;i<steps.length;i++)if(db.child.totalEarned>=steps[i])lv=i+1;if(db.child.totalEarned>=steps[steps.length-1])lv=steps.length+Math.floor((db.child.totalEarned-steps[steps.length-1])/120);return lv}
+function nextLevelNeed(){const steps=db.settings.levelSteps||LEVEL_STEPS;const lv=getLevel();let need=lv<steps.length?steps[lv]:steps[steps.length-1]+(lv-steps.length+1)*120;return need-db.child.totalEarned}
+
+/* ============================ 打卡音效（零文件，Web Audio 合成） ============================ */
+let actx=null;
+function audio(){try{if(!actx)actx=new(window.AudioContext||window.webkitAudioContext)();if(actx.state==='suspended')actx.resume();return actx}catch(e){return null}}
+function tone(freq,dur,type,vol,delay){
+  const ac=audio();if(!ac)return;const t=ac.currentTime+(delay||0);
+  const o=ac.createOscillator(),g=ac.createGain();o.type=type||'sine';o.frequency.setValueAtTime(freq,t);
+  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(vol||.08,t+.02);g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+  o.connect(g);g.connect(ac.destination);o.start(t);o.stop(t+dur+.03);
+}
+function playCheckSound(){if(!db.settings.sfxOn)return;tone(659.25,.18,'sine',.09,0);tone(880,.2,'sine',.09,.12);tone(1174.66,.35,'sine',.07,.24)}
+function playTapSound(){if(!db.settings.sfxOn)return;tone(520,.08,'sine',.04,0)}
+
+/* ============================ 通用 UI ============================ */
+function toast(msg){const r=document.getElementById('toastRoot');const d=document.createElement('div');d.className='toast';d.textContent=msg;r.appendChild(d);setTimeout(()=>{d.style.opacity='0';d.style.transition='.3s';setTimeout(()=>d.remove(),300)},2000)}
+function showModal(html){document.getElementById('modalRoot').innerHTML=`<div class="modal-mask"><div class="modal-card">${html}</div></div>`}
+function closeModal(){document.getElementById('modalRoot').innerHTML=''}
+function modalHead(t){return `<div class="modal-head"><h3>${t}</h3><button data-act="close-modal" aria-label="关闭">✕</button></div>`}
+function confirmModal(title,msg,onYes,yesLabel){
+  showModal(modalHead(title)+`<p style="font-size:15px;line-height:1.6;color:#5E7B9E;font-weight:600">${msg}</p>
+  <div class="modal-actions"><button class="small-btn btn-gray" data-act="close-modal">取消</button><button class="small-btn btn-red" id="confirmYes">${yesLabel||'确定'}</button></div>`);
+  document.getElementById('confirmYes').onclick=()=>{closeModal();onYes()};
+}
+window.toggleWeekDays=function(){
+  const box=document.getElementById('weekBox');if(!box)return;
+  const type=document.getElementById('freqType').value;
+  box.style.display=type==='weekly'?'flex':'none';
+  box.querySelectorAll('label').forEach(l=>l.classList.toggle('on',l.querySelector('input').checked));
+};
+window.pickWeek=function(el){el.classList.toggle('on');const cb=el.querySelector('input');cb.checked=el.classList.contains('on')};
+
+/* ============================ 渲染 ============================ */
+let currentView='today',parentTab='tasks',shopTab='goods',parentUnlocked=false;
+function freqText(f){if(!f)return '每天';if(f.type==='weekly')return '每周'+(f.days||[]).map(d=>weekCN[d]).join('、');if(f.type==='once')return '一次性';return '每天'}
+function isDue(t,dateStr){if(!t.active)return false;if(t.frequency.type==='daily')return true;if(t.frequency.type==='weekly')return (t.frequency.days||[]).includes(new Date(dateStr+'T12:00:00').getDay());if(t.frequency.type==='once')return !db.checkins.some(c=>c.taskId===t.id);return false}
+function todayCheckins(){return db.checkins.filter(c=>c.date===localDate())}
+function checkedTaskIds(){return new Set(todayCheckins().map(c=>c.taskId))}
+function dueTasks(){return db.tasks.filter(t=>isDue(t,localDate()))}
+
+function renderHeader(){
+  const lv=getLevel(),need=nextLevelNeed(),done=todayCheckins().filter(c=>c.status!=='rejected').length,total=dueTasks().length;
+  const pct=total?Math.round(done/total*100):0;
+  const profile=`<div class="ava">${iconFor({emoji:db.child.avatar},'ico-lg')}</div><div class="who"><div class="nm">我的星星打卡</div>
+    <div class="badges"><span class="lv-chip">Lv.${lv}</span><span class="star-chip">${ico('star')} ${db.child.starBalance}</span></div></div>`;
+  document.getElementById('headProfile').innerHTML=profile;
+  document.getElementById('sideProfile').innerHTML=`<div class="ava">${iconFor({emoji:db.child.avatar},'ico-xl')}</div><div class="nm">${esc(db.child.name)}</div><div class="lv">Lv.${lv} · 再得${need}${ico('star-mini','ico-sm')}升级</div><div class="st">${ico('star')} ${db.child.starBalance} 颗星星</div>`;
+  document.getElementById('progressWrap').innerHTML=`<div class="progress-label"><span>今日进度 <b>${done}/${total}</b></span><span>${pct}%</span></div><div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>`;
+}
+function renderToday(){
+  const tasks=dueTasks(),checked=checkedTaskIds();
+  const html=`<div class="sec-title">${ico('dora')} 今天要做的事 <span>点一下卡片就能打卡哦！</span></div>`+
+  (tasks.length?`<div class="task-grid">${tasks.map(t=>{
+    const isDone=checked.has(t.id);const rec=todayCheckins().find(c=>c.taskId===t.id);
+    return `<div class="task-card ${isDone?'done':''}" data-id="${t.id}" data-act="checkin">
+      <div class="task-card-inner">
+        <div class="card-face">
+          ${isDone?`<div class="done-badge">${ico('check','ico-sm')}</div>`:''}
+          <div class="star-tag">${ico('star-mini','ico-sm')} +${t.stars}</div>
+          <div class="emoji">${iconFor(t,'ico-xl')}</div><div class="tname">${esc(t.name)}</div>
+          <div class="meta">${freqText(t.frequency)}${t.needConfirm?' · 需家长确认':''}${isDone?(rec&&rec.status==='pending'?' · 待确认':' · 已完成'):''}</div>
+        </div>
+        <div class="card-face card-back"><div class="big-star">${ico('star','ico-xl')}</div><div class="yay">太棒啦！+${t.stars} 星星</div></div>
+      </div></div>`}).join('')}</div>`:`<div class="empty"><span class="e-emoji">${ico('dora','ico-xl')}</span>今天没有安排任务，去玩一会儿吧！</div>`);
+  document.getElementById('view-today').innerHTML=html;
+}
+function renderShop(){
+  const list=db.products.filter(p=>p.active),orders=db.orders.slice().reverse();
+  const pending=orders.filter(o=>o.status==='pending').length;
+  let body;
+  if(shopTab==='orders'){
+    body=`<div class="panel"><h4>${ico('door')} 我的兑换记录 <span style="font-size:12px;color:var(--muted);font-weight:700">共 ${orders.length} 条${pending?' · 待审核 '+pending+' 条':''}</span></h4><div class="row-list">${
+      orders.length?orders.map(o=>{
+        const tip=o.status==='pending'?'已提交，等待家长审核':o.status==='approved'?'审核通过！请找家长领取奖励':'未通过，星星已退回';
+        return `<div class="row-item"><div class="r-emoji">${o.productImage?`<img src="${esc(o.productImage)}" style="width:38px;height:38px;object-fit:cover;border-radius:8px">`:iconFor({icon:o.productIcon},'ico-md')}</div>
+        <div class="r-main"><div class="r-title">${esc(o.productName)} <span style="color:#E69500">${ico('star-mini','ico-sm')}${o.cost}</span></div>
+        <div class="r-sub">${new Date(o.createdAt).toLocaleString('zh-CN')} · ${tip}</div></div>
+        <span class="status-tag s-${o.status}">${o.status==='pending'?'待审核':o.status==='approved'?'已通过':'未通过'}</span></div>`}).join('')
+      :`<div class="empty"><span class="e-emoji">${ico('door','ico-xl')}</span>还没有兑换过奖品呢</div>`}</div></div>`;
   }else{
-    userData = data;
+    body=list.length?`<div class="shop-grid">${list.map(p=>{
+      const can=db.child.starBalance>=p.cost&&(p.stock<0||p.stock>0);
+      return `<div class="product-card"><div class="product-pic">${p.image?`<img src="${esc(p.image)}" alt="">`:iconFor(p,'ico-xl')}</div>
+      <div class="pname">${esc(p.name)}</div><div class="pprice">${ico('star-mini','ico-sm')} ${p.cost} 星星</div>
+      ${p.stock>=0?`<div style="font-size:12px;color:var(--muted)">库存 ${p.stock}</div>`:''}
+      <button class="big-btn" data-act="redeem" data-id="${p.id}" ${can?'':'disabled'}>${can?'立即兑换':db.child.starBalance<p.cost?'星星不够':'已兑完'}</button></div>`}).join('')}</div>`
+    :`<div class="empty"><span class="e-emoji">${ico('dorayaki','ico-xl')}</span>家长还没有上架奖品哦～</div>`;
   }
-  renderUser();
+  document.getElementById('view-shop').innerHTML=`<div class="sec-title">${ico('pocket')} 星星奖励商城 <span>你有 ${ico('star-mini','ico-sm')} ${db.child.starBalance} 颗</span></div>
+  <div class="pill-tabs"><button class="pill ${shopTab==='goods'?'active':''}" data-act="shop-tab" data-tab="goods">${ico('pocket','ico-sm')} 奖品列表</button>
+  <button class="pill ${shopTab==='orders'?'active':''}" data-act="shop-tab" data-tab="orders">${ico('door','ico-sm')} 我的兑换${pending?' · '+pending:''}</button></div>${body}`;
+}
+function renderParent(){
+  if(!parentUnlocked){document.getElementById('view-parent').innerHTML=`<div class="empty"><span class="e-emoji">${ico('tools','ico-xl')}</span>请输入家长密码进入管理后台<button class="big-btn btn-blue" style="max-width:220px;margin:18px auto 0" data-act="unlock">${ico('bell','ico-sm')} 家长入口</button></div>`;return}
+  const tabs=[['tasks',ico('today','ico-sm')+' 任务'],['history',ico('check','ico-sm')+' 打卡历史'],['ledger',ico('star-mini','ico-sm')+' 星星流水'],['products',ico('pocket','ico-sm')+' 商品'],['orders',ico('door','ico-sm')+' 订单'],['stats',ico('time','ico-sm')+' 统计'],['settings',ico('tools','ico-sm')+' 设置']];
+  let body='';
+  if(parentTab==='tasks')body=parentTasks();
+  else if(parentTab==='history')body=parentHistory();
+  else if(parentTab==='ledger')body=parentLedger();
+  else if(parentTab==='products')body=parentProducts();
+  else if(parentTab==='orders')body=parentOrders();
+  else if(parentTab==='stats')body=parentStats();
+  else body=parentSettings();
+  document.getElementById('view-parent').innerHTML=`<div class="sec-title">${ico('dora')} 家长管理后台 <span>密码保护 · <a data-act="lock" style="color:var(--sky-deep);cursor:pointer;font-weight:800">退出</a></span></div>
+  <div class="pill-tabs">${tabs.map(([k,v])=>`<button class="pill ${parentTab===k?'active':''}" data-act="ptab" data-tab="${k}">${v}</button>`).join('')}</div>${body}`;
+}
+function parentTasks(){
+  return `<div class="panel"><h4>${ico('today')} 任务列表 <button class="small-btn btn-blue" style="margin-left:auto" data-act="add-task">＋ 新增任务</button></h4><div class="row-list">${
+    db.tasks.length?db.tasks.map(t=>`<div class="row-item"><div class="r-emoji">${iconFor(t,'ico-md')}</div><div class="r-main">
+      <div class="r-title">${esc(t.name)}${t.active?'':'（已停用）'}<span class="freq-tag">${freqText(t.frequency)}</span></div>
+      <div class="r-sub">每次 ${ico('star-mini','ico-sm')}+${t.stars} · ${t.needConfirm?'需家长确认':'自动发星'}</div></div>
+      <div class="r-actions"><button class="small-btn btn-blue" data-act="edit-task" data-id="${t.id}">编辑</button>
+      <button class="small-btn btn-gray" data-act="toggle-task" data-id="${t.id}">${t.active?'停用':'启用'}</button>
+      <button class="small-btn btn-red" data-act="del-task" data-id="${t.id}">删除</button></div></div>`).join(''):'<div class="empty">还没有任务，点右上角新增吧</div>'}</div></div>`;
+}
+function parentHistory(){
+  const list=db.checkins.slice().reverse();
+  return `<div class="panel"><h4>${ico('check')} 全部打卡历史（${list.length} 条）</h4><div class="row-list">${
+    list.length?list.map(c=>{const t=db.tasks.find(x=>x.id===c.taskId);return `<div class="row-item"><div class="r-emoji">${t?iconFor(t,'ico-md'):ico('check','ico-md')}</div>
+    <div class="r-main"><div class="r-title">${t?esc(t.name):'已删除任务'}</div><div class="r-sub">${c.date} · ${ico('star-mini','ico-sm')}+${c.stars} · ${new Date(c.createdAt).toLocaleString('zh-CN')}</div></div>
+    <span class="status-tag s-${c.status}">${c.status==='approved'?'已完成':c.status==='pending'?'待确认':'已驳回'}</span>
+    ${c.status==='pending'?`<div class="r-actions"><button class="small-btn btn-green" data-act="approve" data-id="${c.id}">通过发星</button><button class="small-btn btn-red" data-act="reject" data-id="${c.id}">驳回</button></div>`:''}</div>`}).join(''):'<div class="empty">暂无打卡记录</div>'}</div></div>`;
+}
+function parentLedger(){
+  const list=db.transactions;
+  const earn=list.filter(t=>t.amount>0).reduce((s,t)=>s+t.amount,0),spend=list.filter(t=>t.amount<0).reduce((s,t)=>s-Math.abs(t.amount),0);
+  return `<div class="grid2"><div class="stat-card"><div class="num">+${earn}</div><div class="lbl">累计收入星星</div></div><div class="stat-card"><div class="num">-${spend}</div><div class="lbl">累计支出星星</div></div></div>
+  <div class="panel" style="margin-top:14px"><h4>${ico('star')} 星星收支明细（${list.length} 条）</h4><div class="row-list">${
+    list.length?list.map(t=>`<div class="row-item"><div class="r-emoji">${ico(t.amount>0?'star':'pocket','ico-md')}</div><div class="r-main">
+    <div class="r-title">${esc(t.reason)} <span class="${t.amount>0?'earn':'spend'}">${t.amount>0?'+':''}${t.amount}</span></div>
+    <div class="r-sub">${new Date(t.createdAt).toLocaleString('zh-CN')} · 余额 ${t.balanceAfter}</div></div></div>`).join(''):'<div class="empty">暂无流水</div>'}</div></div>`;
+}
+function parentProducts(){
+  return `<div class="panel"><h4>${ico('pocket')} 商品管理 <button class="small-btn btn-blue" style="margin-left:auto" data-act="add-product">＋ 上架商品</button></h4><div class="row-list">${
+    db.products.length?db.products.map(p=>`<div class="row-item"><div class="r-emoji">${p.image?`<img src="${esc(p.image)}" style="width:38px;height:38px;object-fit:cover;border-radius:8px">`:iconFor(p,'ico-md')}</div>
+    <div class="r-main"><div class="r-title">${esc(p.name)} ${p.active?'':'（已下架）'}</div><div class="r-sub">${ico('star-mini','ico-sm')} ${p.cost} · ${p.stock<0?'库存不限':'库存 '+p.stock}</div></div>
+    <div class="r-actions"><button class="small-btn btn-blue" data-act="edit-product" data-id="${p.id}">编辑</button><button class="small-btn btn-gray" data-act="toggle-product" data-id="${p.id}">${p.active?'下架':'上架'}</button>
+    <button class="small-btn btn-red" data-act="del-product" data-id="${p.id}">删除</button></div></div>`).join(''):'<div class="empty">还没有商品</div>'}</div></div>`;
+}
+function parentOrders(){
+  const list=db.orders.slice().reverse();
+  return `<div class="panel"><h4>${ico('door')} 兑换订单（${list.length} 条）</h4><div class="row-list">${
+    list.length?list.map(o=>`<div class="row-item"><div class="r-emoji">${o.productImage?`<img src="${esc(o.productImage)}" style="width:38px;height:38px;object-fit:cover;border-radius:8px">`:iconFor({icon:o.productIcon},'ico-md')}</div>
+    <div class="r-main"><div class="r-title">${esc(o.productName)} · ${ico('star-mini','ico-sm')}${o.cost}</div><div class="r-sub">${new Date(o.createdAt).toLocaleString('zh-CN')}</div></div>
+    <span class="status-tag s-${o.status}">${o.status==='pending'?'待审核':o.status==='approved'?'已通过':'已驳回'}</span>
+    ${o.status==='pending'?`<div class="r-actions"><button class="small-btn btn-green" data-act="approve-order" data-id="${o.id}">通过</button><button class="small-btn btn-red" data-act="reject-order" data-id="${o.id}">驳回退星</button></div>`:''}</div>`).join(''):'<div class="empty">暂无兑换订单</div>'}</div></div>`;
+}
+function parentStats(){
+  const days=[];for(let i=6;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);const s=localDate(d);days.push({label:`${d.getMonth()+1}/${d.getDate()}`,count:db.checkins.filter(c=>c.date===s&&c.status!=='rejected').length})}
+  const max=Math.max(1,...days.map(d=>d.count));
+  const taskCounts=db.tasks.map(t=>({name:t.name,icon:t.icon,emoji:t.emoji,count:db.checkins.filter(c=>c.taskId===t.id&&c.status!=='rejected').length})).sort((a,b)=>b.count-a.count);
+  const pending=db.checkins.filter(c=>c.status==='pending').length+db.orders.filter(o=>o.status==='pending').length;
+  return `<div class="grid2"><div class="stat-card"><div class="num">${db.checkins.filter(c=>c.status!=='rejected').length}</div><div class="lbl">累计打卡次数</div></div>
+  <div class="stat-card"><div class="num">${db.child.totalEarned}</div><div class="lbl">累计获得星星</div></div>
+  <div class="stat-card"><div class="num">Lv.${getLevel()}</div><div class="lbl">当前等级</div></div>
+  <div class="stat-card"><div class="num">${pending}</div><div class="lbl">待处理事项</div></div></div>
+  <div class="panel" style="margin-top:14px"><h4>${ico('time')} 近 7 天打卡趋势</h4><div class="chart">${days.map(d=>`<div class="chart-col"><b>${d.count||''}</b><div class="chart-bar" style="height:${Math.max(4,d.count/max*120)}px"></div><span>${d.label}</span></div>`).join('')}</div></div>
+  <div class="panel"><h4>${ico('bell')} 任务完成排行</h4><div class="row-list">${taskCounts.map((t,i)=>`<div class="row-item"><div class="r-emoji">${ico(i===0?'star':(t.icon||'dora'),'ico-md')}</div><div class="r-main"><div class="r-title">${esc(t.name)}</div></div><div style="font-weight:900;color:var(--sky-deep)">${t.count} 次</div></div>`).join('')}</div></div>`;
+}
+function parentSettings(){
+  const av=DORA_ICONS.includes(String(db.child.avatar))?db.child.avatar:'star';
+  return `<div class="panel"><h4>${ico('dora')} 基础设置</h4><div class="grid2">
+    <div><label style="font-size:13px;font-weight:800;color:#5E7B9E">孩子昵称</label><input type="text" id="setName" value="${esc(db.child.name)}" style="width:100%;min-height:44px;border:2px solid #E3EEFA;border-radius:12px;padding:8px"></div>
+    <div><label style="font-size:13px;font-weight:800;color:#5E7B9E">家长密码</label><input type="text" id="setPin" inputmode="numeric" value="${esc(db.child.pin)}" style="width:100%;min-height:44px;border:2px solid #E3EEFA;border-radius:12px;padding:8px"></div>
+    <div><label style="font-size:13px;font-weight:800;color:#5E7B9E">手动调整星星</label><div style="display:flex;gap:8px"><input type="number" id="adjustStars" placeholder="数量，可负数" style="width:100%;min-height:44px;border:2px solid #E3EEFA;border-radius:12px;padding:8px"><button class="small-btn btn-blue" data-act="adjust" style="flex:none">调整</button></div></div>
+    </div>
+    <label style="font-size:13px;font-weight:800;color:#5E7B9E;display:block;margin-top:14px">头像图标（哆啦A梦家族）</label><input type="hidden" id="setAvatar" value="${av}">
+    <div class="icon-picker" id="avatarPicker">${DORA_ICONS.map(id=>`<button type="button" class="ip ${id===av?'on':''}" data-act="pick-avatar" data-icon="${id}" title="${ICON_NAMES[id]}">${ico(id)}</button>`).join('')}</div>
+    <button class="big-btn btn-blue" style="margin-top:16px" data-act="save-settings">保存设置</button></div>
+  <div class="panel"><h4>${ico('light')} 数据备份</h4><p style="font-size:13px;color:var(--muted);line-height:1.6;font-weight:600">数据保存在本设备浏览器中。请定期导出备份，清除浏览器数据会导致记录丢失。</p>
+  <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="small-btn btn-blue" data-act="export">导出备份</button><button class="small-btn btn-gray" data-act="import">导入备份</button>
+  <button class="small-btn btn-red" data-act="reset">恢复初始数据</button></div>
+  <p style="font-size:12px;color:#9AB0C8;margin-top:14px;line-height:1.6">${ico('today','ico-sm')} 添加到主屏幕：Safari 打开本页 → 点击分享 → 「添加到主屏幕」，即可像 App 一样全屏使用。</p></div>`;
+}
+function renderAll(){renderHeader();renderToday();renderShop();renderParent()}
+
+/* ============================ 业务动作 ============================ */
+function doCheckin(card){
+  const id=card.dataset.id,t=db.tasks.find(x=>x.id===id);if(!t)return;
+  if(card.dataset.busy==='1')return;
+  if(card.classList.contains('done')){toast('今天已经打过卡啦，明天再来～');return}
+  if(!isDue(t,localDate())){toast('今天没有这个任务哦');return}
+  card.dataset.busy='1';
+  playCheckSound();
+  const rect=card.getBoundingClientRect();
+  for(let i=0;i<16;i++){const s=document.createElement('span');s.className='star-particle';s.innerHTML=ico(i%3===0?'bell':'star','ico-md');
+    s.style.left=(rect.left+rect.width*(.25+Math.random()*.5))+'px';s.style.top=(rect.top+rect.height*(.35+Math.random()*.3))+'px';
+    s.style.setProperty('--dx',(Math.random()*160-80)+'px');s.style.setProperty('--dy',(-90-Math.random()*120)+'px');
+    s.style.animationDelay=(Math.random()*.15)+'s';document.body.appendChild(s);setTimeout(()=>s.remove(),1300)}
+  card.classList.add('flipped');
+  setTimeout(()=>{
+    const rec={id:uid(),taskId:t.id,date:localDate(),status:t.needConfirm?'pending':'approved',stars:t.stars,createdAt:iso(),reviewedAt:''};
+    db.checkins.unshift(rec);
+    if(!t.needConfirm)addTx('earn',t.stars,'完成：'+t.name,rec.id);
+    saveDB();renderAll();
+    toast(t.needConfirm?'已打卡，等待家长确认发星':'太棒啦！获得 '+t.stars+' 颗星星');
+  },620);
+}
+function redeem(id){
+  const p=db.products.find(x=>x.id===id);if(!p)return;
+  if(db.child.starBalance<p.cost){toast('星星不够，继续加油打卡吧！');return}
+  if(p.stock===0){toast('这个奖品已经兑完啦');return}
+  confirmModal('兑换确认',`确定用 <b>${p.cost} 颗星星</b> 兑换「${esc(p.name)}」吗？提交后需家长审核。`,()=>{
+    const order={id:uid(),productId:p.id,productName:p.name,productImage:p.image,productIcon:p.icon||p.emoji,cost:p.cost,status:'pending',createdAt:iso(),reviewedAt:''};
+    db.orders.unshift(order);addTx('spend',-p.cost,'兑换：'+p.name,order.id);
+    if(p.stock>0)p.stock--;shopTab='orders';
+    saveDB();playTapSound();renderAll();toast('兑换申请已提交，可在「我的兑换」查看审核状态');
+  },'确认兑换');
+}
+function approveCheckin(id){
+  const c=db.checkins.find(x=>x.id===id);if(!c||c.status!=='pending')return;
+  c.status='approved';c.reviewedAt=iso();const t=db.tasks.find(x=>x.id===c.taskId);
+  addTx('earn',c.stars,'家长确认：'+(t?t.name:'任务'),c.id);saveDB();renderAll();toast('已通过，发放 '+c.stars+' 颗星星');
+}
+function rejectCheckin(id){const c=db.checkins.find(x=>x.id===id);if(c){c.status='rejected';c.reviewedAt=iso();saveDB();renderAll();toast('已驳回打卡')}}
+function approveOrder(id){const o=db.orders.find(x=>x.id===id);if(o&&o.status==='pending'){o.status='approved';o.reviewedAt=iso();saveDB();renderAll();toast('订单已通过')}}
+function rejectOrder(id){const o=db.orders.find(x=>x.id===id);if(o&&o.status==='pending'){o.status='rejected';o.reviewedAt=iso();addTx('refund',o.cost,'兑换驳回退款：'+o.productName,o.id);saveDB();renderAll();toast('已驳回，星星已退还')}}
+
+/* ============================ 表单弹窗 ============================ */
+function iconPickerHTML(sel,act){
+  const cur=String(sel||'dora');
+  return `<input type="hidden" class="iconValue" value="${cur}"><div class="icon-picker">${DORA_ICONS.map(id=>`<button type="button" class="ip ${id===cur?'on':''}" data-act="${act}" data-icon="${id}" title="${ICON_NAMES[id]}">${ico(id)}</button>`).join('')}</div>`;
+}
+function openTaskModal(id){
+  const t=id?db.tasks.find(x=>x.id===id):null;const f=t?t.frequency:{type:'daily',days:[]};
+  showModal(modalHead(t?'编辑任务':'新增任务')+`<form id="taskForm">
+    <input type="hidden" name="id" value="${t?t.id:''}">
+    <label>任务名称</label><input type="text" name="name" required maxlength="20" value="${esc(t?t.name:'')}" placeholder="例如：汉字描红">
+    <label>任务图标（哆啦A梦元素）</label>${iconPickerHTML(t?(t.icon||t.emoji):'dora','pick-task-icon')}
+    <label>每次获得星星</label><input type="number" name="stars" required min="1" max="100" value="${t?t.stars:2}">
+    <label>打卡频率</label><select name="freqType" id="freqType" onchange="toggleWeekDays()">
+      <option value="daily" ${f.type==='daily'?'selected':''}>每天</option>
+      <option value="weekly" ${f.type==='weekly'?'selected':''}>每周指定几天</option>
+      <option value="once" ${f.type==='once'?'selected':''}>一次性</option></select>
+    <div class="week-box" id="weekBox" style="display:${f.type==='weekly'?'flex':'none'}">${weekCN.map((w,i)=>`<label class="${(f.days||[]).includes(i)?'on':''}" onclick="event.preventDefault();pickWeek(this)"><input type="checkbox" name="day" value="${i}" ${(f.days||[]).includes(i)?'checked':''}>${w}</label>`).join('')}</div>
+    <label class="checkline"><input type="checkbox" name="needConfirm" ${t&&t.needConfirm?'checked':''}> 需要家长确认后才发星星</label>
+    <div class="modal-actions"><button type="button" class="small-btn btn-gray" data-act="close-modal">取消</button><button type="submit" class="small-btn btn-blue">保存任务</button></div>
+  </form>`);
+  document.getElementById('taskForm').onsubmit=e=>{
+    e.preventDefault();const fd=new FormData(e.target);
+    const days=[...e.target.querySelectorAll('input[name=day]:checked')].map(x=>+x.value);
+    const ic=e.target.querySelector('.iconValue').value||'dora';
+    const obj={name:fd.get('name').trim()||'新任务',icon:ic,emoji:ic,stars:Math.max(1,+fd.get('stars')||1),
+      frequency:{type:fd.get('freqType'),days:fd.get('freqType')==='weekly'?days:[]},needConfirm:fd.get('needConfirm')==='on',active:true};
+    if(t)Object.assign(t,obj);else db.tasks.unshift({id:uid(),createdAt:iso(),...obj});
+    saveDB();closeModal();renderAll();toast('任务已保存');
+  };
+}
+function compressImage(file,cb){const r=new FileReader();r.onload=e=>{const img=new Image();img.onload=()=>{let w=img.width,h=img.height;const max=360;if(w>h){if(w>max){h=Math.round(h*max/w);w=max}}else{if(h>max){w=Math.round(w*max/h);h=max}}
+  const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);cb(c.toDataURL('image/jpeg',.7))};img.src=e.target.result};r.readAsDataURL(file)}
+function openProductModal(id){
+  const p=id?db.products.find(x=>x.id===id):null;
+  showModal(modalHead(p?'编辑商品':'上架新商品')+`<form id="productForm">
+    <input type="hidden" name="id" value="${p?p.id:''}"><input type="hidden" name="image" id="imageData" value="${esc(p?p.image:'')}">
+    <label>商品名称</label><input type="text" name="name" required maxlength="24" value="${esc(p?p.name:'')}" placeholder="例如：看动画片 30 分钟">
+    <label>所需星星</label><input type="number" name="cost" required min="1" max="9999" value="${p?p.cost:15}">
+    <label>库存（-1 为不限）</label><input type="number" name="stock" min="-1" value="${p?p.stock:-1}">
+    <label>商品图标（哆啦A梦元素，无图片时显示）</label>${iconPickerHTML(p?(p.icon||p.emoji):'dorayaki','pick-product-icon')}
+    <label>商品图片（可选，自动压缩）</label><input type="file" accept="image/*" id="picInput" style="font-size:13px">
+    <div id="picPreview" style="margin-top:8px">${p&&p.image?`<img src="${esc(p.image)}" style="max-height:100px;border-radius:12px">`:''}</div>
+    <div class="modal-actions"><button type="button" class="small-btn btn-gray" data-act="close-modal">取消</button><button type="submit" class="small-btn btn-blue">保存商品</button></div>
+  </form>`);
+  document.getElementById('picInput').onchange=e=>{
+    const f=e.target.files[0];if(!f)return;
+    compressImage(f,async d=>{
+      const prev=document.getElementById('picPreview');
+      prev.innerHTML=`<img src="${d}" style="max-height:100px;border-radius:12px">`;
+      let finalUrl=d; // 默认用压缩后的 dataURL（离线兜底）
+      if(SB){
+        try{
+          const bin=await (await fetch(d)).blob();
+          const path=USER_ID+'/reward-'+Date.now()+'-'+Math.random().toString(36).slice(2,8)+'.jpg';
+          const {error:upErr}=await SB.storage.from('reward-images').upload(path,bin,{contentType:'image/jpeg',upsert:false});
+          if(upErr)throw upErr;
+          const {data:pub}=SB.storage.from('reward-images').getPublicUrl(path);
+          if(pub&&pub.publicUrl)finalUrl=pub.publicUrl; // 上传成功：存云端 URL 到 image_url
+        }catch(err){console.warn('[SB] image upload failed, fallback base64',err&&err.message||err)}
+      }
+      document.getElementById('imageData').value=finalUrl;
+      prev.innerHTML=`<img src="${finalUrl}" style="max-height:100px;border-radius:12px">`;
+    });
+  };
+  document.getElementById('productForm').onsubmit=e=>{
+    e.preventDefault();const fd=new FormData(e.target);
+    const ic=e.target.querySelector('.iconValue').value||'dorayaki';
+    const obj={name:fd.get('name').trim()||'新商品',cost:Math.max(1,+fd.get('cost')||1),stock:Math.max(-1,+fd.get('stock')),
+      icon:ic,emoji:ic,image:fd.get('image')||'',active:true};
+    if(p)Object.assign(p,obj);else db.products.unshift({id:uid(),createdAt:iso(),...obj});
+    saveDB();closeModal();renderAll();toast('商品已保存');
+  };
+}
+function openPinModal(){
+  const isDefault=String(db.child.pin)==='1234';
+  showModal(modalHead(ico('bell')+' 家长入口')+`<form id="pinForm"><p style="font-size:14px;color:var(--muted);font-weight:600">请输入家长密码${isDefault?'（默认 1234）':''}</p>
+    <label>密码</label><input type="password" name="pin" inputmode="numeric" autofocus placeholder="请输入密码">
+    <div class="modal-actions"><button type="button" class="small-btn btn-gray" data-act="close-modal">取消</button><button type="submit" class="small-btn btn-blue">进入后台</button></div></form>`);
+  document.getElementById('pinForm').onsubmit=e=>{e.preventDefault();
+    if(e.target.pin.value===String(db.child.pin)){parentUnlocked=true;closeModal();renderParent();playTapSound()}
+    else{toast('密码不对哦，再试一次');e.target.pin.value=''}};
 }
 
-async function loadTasks(){
-  const {data} = await supabase.from("tasks").select("*").eq("uid",FIX_USER_ID).order("sort");
-  taskList = data || [];
-  renderTasks();
+/* ============================ 事件 ============================ */
+document.addEventListener('click',e=>{
+  const mask=e.target.closest('.modal-mask');if(mask&&e.target===mask){closeModal();return}
+  const el=e.target.closest('[data-act]');if(!el)return;const act=el.dataset.act,id=el.dataset.id;
+  switch(act){
+    case 'nav':playTapSound();currentView=el.dataset.view;
+      ['today','shop','parent'].forEach(v=>document.getElementById('view-'+v).classList.toggle('hidden',v!==currentView));
+      document.querySelectorAll('[data-act=nav]').forEach(b=>b.classList.toggle('active',b.dataset.view===currentView));
+      if(currentView==='parent')renderParent();window.scrollTo({top:0,behavior:'smooth'});break;
+    case 'checkin':doCheckin(el);break;
+    case 'redeem':redeem(id);break;
+    case 'shop-tab':shopTab=el.dataset.tab;playTapSound();renderShop();break;
+    case 'unlock':openPinModal();break;
+    case 'lock':parentUnlocked=false;renderParent();break;
+    case 'ptab':parentTab=el.dataset.tab;renderParent();break;
+    case 'close-modal':closeModal();break;
+    case 'pick-task-icon':case 'pick-product-icon':case 'pick-avatar':{
+      const picker=el.closest('.icon-picker');if(!picker)break;
+      picker.querySelectorAll('.ip').forEach(b=>b.classList.toggle('on',b===el));
+      const hidden=picker.previousElementSibling;
+      if(hidden&&hidden.classList.contains('iconValue'))hidden.value=el.dataset.icon;
+      else document.getElementById('setAvatar').value=el.dataset.icon;
+      playTapSound();break}
+    case 'add-task':openTaskModal();break;
+    case 'edit-task':openTaskModal(id);break;
+    case 'toggle-task':{const t=db.tasks.find(x=>x.id===id);if(t){t.active=!t.active;saveDB();renderAll()}}break;
+    case 'del-task':confirmModal('删除任务','确定删除这个任务吗？历史打卡记录会保留。',()=>{db.tasks=db.tasks.filter(x=>x.id!==id);saveDB();renderAll();toast('任务已删除')},'删除');break;
+    case 'approve':approveCheckin(id);break;
+    case 'reject':rejectCheckin(id);break;
+    case 'add-product':openProductModal();break;
+    case 'edit-product':openProductModal(id);break;
+    case 'toggle-product':{const p=db.products.find(x=>x.id===id);if(p){p.active=!p.active;saveDB();renderAll()}}break;
+    case 'del-product':confirmModal('删除商品','确定删除这个商品吗？',()=>{db.products=db.products.filter(x=>x.id!==id);saveDB();renderAll();toast('商品已删除')},'删除');break;
+    case 'approve-order':approveOrder(id);break;
+    case 'reject-order':rejectOrder(id);break;
+    case 'save-settings':{
+      const name=document.getElementById('setName').value.trim(),avatar=document.getElementById('setAvatar').value.trim(),pin=document.getElementById('setPin').value.trim();
+      if(!name||!pin){toast('昵称和密码不能为空');break}
+      db.child.name=name;db.child.avatar=avatar||'star';db.child.pin=pin;saveDB();renderAll();toast('设置已保存');break}
+    case 'adjust':{
+      const n=+document.getElementById('adjustStars').value;if(!n){toast('请输入调整数量');break}
+      addTx('adjust',n,'家长手动调整','');saveDB();renderAll();toast('已调整 '+(n>0?'+':'')+n+' 颗星星');break}
+    case 'export':{
+      const blob=new Blob([JSON.stringify(db,null,2)],{type:'application/json'});const a=document.createElement('a');
+      a.href=URL.createObjectURL(blob);a.download='星星打卡备份_'+localDate()+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);toast('备份已导出');break}
+    case 'import':document.getElementById('importFile').click();break;
+    case 'reset':confirmModal('恢复初始数据','⚠️ 这将清除所有打卡、星星、订单记录，且不可恢复！建议先导出备份。确定继续吗？',()=>{
+      db=defaultDB();saveDB();parentUnlocked=false;shopTab='goods';renderAll();toast('已恢复初始数据')},'确定重置');break;
+  }
+});
+document.getElementById('importFile').onchange=e=>{
+  const f=e.target.files[0];if(!f)return;const r=new FileReader();
+  r.onload=ev=>{try{const d=JSON.parse(ev.target.result);if(!d.child||!Array.isArray(d.tasks))throw new Error('格式不符');db=d;saveDB();renderAll();toast('备份导入成功')}catch(err){toast('导入失败：文件格式不对')}e.target.value=''};
+  r.readAsText(f);
+};
+/* ============================ 启动 ============================ */
+renderAll(); // 先用本地缓存秒开渲染，保证离线可用
+if(SB){
+  // 异步拉取云端最新数据并订阅实时同步（失败自动降级为本地模式）
+  setTimeout(()=>{pullFromCloud(false);subscribeRealtime()},0);
+  // 网络恢复时自动重新同步
+  window.addEventListener('online',()=>pullFromCloud(false));
 }
-
-function renderUser(){
-  document.getElementById("totalStar").innerText = userData.star;
-  document.getElementById("level").innerText = userData.level;
-  const need = 10;
-  document.getElementById("nextNeed").innerText = need - (userData.star % 10);
-}
-
-function renderTasks(){
-  const wrap = document.getElementById("taskList");
-  wrap.innerHTML = "";
-  let done=0;
-  const today = new Date().toISOString().slice(0,10);
-  taskList.forEach(t=>{
-    const isDoneToday = t.fin
+</script>
+</body>
+</html>
