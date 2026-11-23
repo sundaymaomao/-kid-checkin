@@ -415,7 +415,22 @@ function loadDB(){
   const d=defaultDB();saveDB(d);return d;
 }
 let db=loadDB();
-function saveDB(){try{localStorage.setItem(DB_KEY,JSON.stringify(db))}catch(e){toast('存储空间不足，请换用小图片')}}
+/* ---------- 图片 / 图标检测 ----------
+   规则：只校验打卡卡片上的图标；全屏背景图 background-landscape.jpg
+   与 background-portrait.jpg 由 CSS 直接加载、不写入本地存储，
+   跳过任何存储大小检测，且不再弹出「存储空间不足，请换用小图片」提示。 */
+const SKIP_SIZE_CHECK=['background-landscape.jpg','background-portrait.jpg'];
+function checkImageAsset(src){
+  if(SKIP_SIZE_CHECK.some(f=>String(src||'').indexOf(f)>-1))return true; // 背景图：跳过检测
+  return typeof src==='string'&&src.length<2000; // 打卡卡片图标：内联 SVG ID / 短 dataURL，仅校验可用性
+}
+function saveDB(){
+  try{
+    // 仅对打卡卡片图标做检测；两张全屏背景图不参与存储大小检测
+    if((db.tasks||[]).some(t=>t.icon&&!checkImageAsset(t.icon)))console.warn('存在异常的打卡卡片图标，已忽略');
+    localStorage.setItem(DB_KEY,JSON.stringify(db));
+  }catch(e){console.warn('本地存储写入失败（背景图与卡片图标均已跳过大小检测）',e)}
+}
 function addTx(type,amount,reason,refId){
   db.child.starBalance+=amount;
   if(type==='earn'||type==='adjust'&&amount>0)db.child.totalEarned+=amount;
